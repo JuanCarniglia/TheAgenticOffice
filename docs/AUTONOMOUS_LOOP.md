@@ -46,7 +46,7 @@ Evidence: `src/harness/session.ts` `start()`.
 
 ## Loop 4 — Token cap: stop spending, keep the day
 
-**Detect.** `tokenBudgetSpent(todayTokens)` (`DAY_TOKEN_CAP = 500_000`) at the top of a non-mock tick.
+**Detect.** `tokenBudgetSpent(todayTokens)` (`DAY_TOKEN_CAP = 10_000_000`) at the top of a non-mock tick.
 
 **React.** One `error`: “Day token budget reached — agents will not take new LLM work.” `tokenCapNotified` so it does not spam.
 

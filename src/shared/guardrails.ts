@@ -4,7 +4,7 @@ import type { AgentId } from "./types.js";
 export const HUMAN_MAX_CHARS = 180;
 export const HUMAN_MAX_WORDS = 40;
 /** Hard stop on LLM spend for one operating day (~$0.12 at $0.25 / 1M). */
-export const DAY_TOKEN_CAP = 500_000;
+export const DAY_TOKEN_CAP = 1_000_000;
 /** A single human ask may not itself be a token dump. */
 export const ASK_TOKEN_CAP = 80;
 

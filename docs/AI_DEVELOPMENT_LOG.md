@@ -113,7 +113,7 @@ Human: staggering token spend; space random actions; cache prompts/responses.
 - `cannedSalesReply` + `rememberSalesReply`
 - `formatSlimBoard`
 - Unique thread ids; Cursor agent disposed each turn
-- Day cap 500k tokens
+- Day cap 10M tokens
 
 This is the largest architectural correction after v1: **supervisor-every-tick → clock + beats + on-demand sales agent**.
 

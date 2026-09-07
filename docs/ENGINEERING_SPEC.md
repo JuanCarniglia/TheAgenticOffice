@@ -69,7 +69,7 @@ Simulation is **not** frame-tied. Phaser runs at display refresh; the harness ti
 | --- | --- | --- |
 | Bind | Local `127.0.0.1`; `HOST=0.0.0.0` in Docker/ECS | Keys stay in harness `.env` / Secrets Manager, never the browser |
 | Human line | ≤ 180 chars / 40 words / 80 estimated tokens | Stop prompt stuffing; phone small talk is allowed |
-| Day token cap | 500,000 (~$0.12 at $0.25 / 1M) | Hard stop on LLM spend |
+| Day token cap | 10,000,000 (~$0.12 at $0.25 / 1M) | Hard stop on LLM spend |
 | Speech balloon | ~110 chars on the floor, 140 in chat | Vintage UI, readable overlay |
 | Sales LLM | **Only** on a novel customer reply | Idle ticks used to burn a full office prompt every 2.2s |
 | Cursor tools | `mcp` + custom office tools; shell/read/edit/web **disallowed** | Agents must not leave the paper office |
