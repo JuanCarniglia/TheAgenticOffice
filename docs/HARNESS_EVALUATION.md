@@ -8,7 +8,7 @@ The harness is both the **runtime** for the office and the **evaluation surface*
 
 | Endpoint | Role |
 | --- | --- |
-| `GET /health` | `{ ok, service: "agentic-office-harness" }` |
+| `GET /health` | `{ ok, service: "agentic-office-harness", game }` — `game` is true when `dist/index.html` exists |
 | `GET /session` | Blackboard snapshot (tasks, books, stock, chat) |
 | `POST /session/start` | Same payload as WS `start` |
 | `WS /ws` | Bidirectional `ClientMessage` / `OfficeEvent` |
@@ -19,8 +19,9 @@ The harness is both the **runtime** for the office and the **evaluation surface*
 
 `MockEngine` implements the **same tools and events** as live agents with canned ops (`MORNING`, `IDLE`, `AFTERNOON`). It is how the game shipped before keys, and how a reviewer can replay:
 
-- straw draw + opening pitch
-- purchase → `applySale` → tickets AO-3/AO-4/AO-5/AO-2 done
+- inbound `dial` → Pam pickup → transfer → sales hello
+- purchase after a quote → `tryCloseSale` / `applySale` → tickets AO-3/AO-4/AO-5/AO-2 done
+- hangup / bye ends the line (`phone hangup`)
 - HQ `human_reply` acknowledged
 - schedule (login/standup/lunch/wrap)
 
@@ -35,9 +36,10 @@ If a live provider throws on start, the session **falls back to mock** and still
 | Day token cap already spent | customer, HQ | `too_expensive` |
 | Shells, `rm -rf`, npm/pip/git, URLs, “search the web”, jailbreaks | all | `off_limits` |
 | “write a 500-word…”, dump entire X | all | `too_expensive` |
-| Weather/bitcoin/poem without paper terms | customer/HQ | `off_topic` |
-| Length > 160 chars / 32 words / 80 tokens | all | `too_long` |
-| ≥7 words and no business lexicon | customer/HQ | `off_topic` |
+| Bitcoin / poem / other OFF_TOPIC without paper terms | HQ (customer allows ordinary phone chat) | `off_topic` |
+| Length > 180 chars / 40 words / 80 tokens | all | `too_long` |
+| ≥7 words and no business lexicon | HQ (not customer) | `off_topic` |
+| Phone small talk (hi, weather, Monday) | customer | **allowed** — `screenHumanText` returns ok |
 | Goal with no paper-office terms | goal | `off_topic` → default goal |
 
 The game UI screens the same way (`CustomerChat`, Settings goal, HQ reply box) so a blocked line never has to round-trip. The harness screens again so a raw WS client cannot bypass the UI.
@@ -52,25 +54,28 @@ Live prompts also prepend `BUSINESS_GUARDRAIL_RULES` (stay in the office, no she
 npm run eval
 ```
 
-`scripts/eval.ts` runs without servers or keys. Last run: **22/22 passed**.
+`scripts/eval.ts` runs without servers or keys. Last run: **41/41** cases in the file.
 
 | Bucket | What it proves |
 | --- | --- |
-| Guardrails | Commands, URLs, jailbreak/off-topic, long lines, token cap, legal order, legal goal |
+| Guardrails | Commands, URLs, jailbreak/off-topic, long lines, token cap, legal order, legal goal, **phone small talk allowed** |
 | Commerce | 30-ream A3 sale drops 40→10, $255 revenue, reorder flag, oversell refused |
 | Matching | SKU from text, qty vs GSM |
-| Intent | `looksLikePurchase` / `looksLikeRejection`, `$1000` goal miss/hit |
-| Cache | Price question canned reply; normalized repeat hits cache |
+| Intent | Quote-gated yes/ok; lone yes is not a buy; recycled spec is not a close; hangup vs “by the way”; `$1000` goal miss/hit |
+| Cache | Price question canned reply; greeting has no price dump; normalized repeat hits cache |
+| Spec change | “recycled, legal, 35” updates pitch SKU/qty and quotes recycled — does not ring up the A3 |
 
 `npm run typecheck` / `npm run build` (`tsc --noEmit`) is the compile gate.
 
-There is no Playwright suite in-repo. Browser review during build used Cursor’s preview on `http://127.0.0.1:5178/` (intro, settings, overlay, balloon reply, office-day login/standup).
+There is no Playwright suite in-repo. Browser review during build used Cursor’s preview on `http://127.0.0.1:5178/` (intro, settings, overlay, inbound call, hangup, office-day login/standup).
 
 ## 5. Review loops in the product
 
 | Loop | Mechanism | Stop / continue |
 | --- | --- | --- |
 | Goal stamp | `goalReached` after celebration beats, not on the first “ok” | Stamp faded; used to fire too early |
+| Quote-gated close | `looksLikePurchase(text, dealIsQuoted)` — lone yes is not a buy | Recycled/spec change updates pitch, does not ring the old SKU |
+| Inbound call | `dial` → Pam → transfer; `hangup` / bye clears the line | `pitch_customer` refused unless `callPhase === live` |
 | Reorder | `qty <= reorderAt` → Angela→Pam → 36-tick mill delay | STOCK stays down until the truck |
 | Token budget | `TokenMeterHandler` + Cursor `usage.totalTokens` + char/4 fallback | Tick skips LLM; one `error` event |
 | Provider failure | `start()` catch | Mock takeover |
@@ -93,7 +98,7 @@ BOOKS in the office menu shows balance, today’s cash, and token spend at `$0.2
 
 ## 7. What we did not add
 
-- No CI workflow in git yet (repo still has no commits).
+- No CI workflow in git yet (`main` is the Initial Version commit; eval is local `npm run eval`).
 - No embedding-based memory eval (keyword score only).
 - No held-out sales-conversation gold set beyond canned regex + cache.
 - Cursor/OpenAI/Anthropic live calls are **not** in `npm run eval` (cost and keys). Mock + guardrails + commerce cover the invariants those providers must not violate.

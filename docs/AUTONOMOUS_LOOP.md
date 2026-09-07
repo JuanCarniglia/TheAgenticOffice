@@ -2,7 +2,7 @@
 
 Requirement: show at least one place where an agent **detected** a problem, **reacted**, and **continued** without another human instruction.
 
-The office is full of those loops. The human only starts the session and (optionally) types in customer chat. Everything below runs off the clock.
+The office is full of those loops. The human only starts the session and (optionally) dials. Everything below runs off the clock.
 
 ## Loop 1 — Warehouse min → Angela → Pam → mill truck (primary)
 
@@ -40,7 +40,7 @@ Evidence: `src/harness/beats.ts` `queueFire`; `OfficeScene` `showFire` / `hideFi
 
 **React.** Emit `{ type: "error", message }`, set `provider = "mock"`, `mock.reset`.
 
-**Continue.** Clock arms, morning straw draw still happens. The player is not asked to re-click Start.
+**Continue.** Clock arms, morning cooler still runs (Pam owns the phone). The player is not asked to re-click Start.
 
 Evidence: `src/harness/session.ts` `start()`.
 
@@ -74,15 +74,17 @@ Evidence: `session.ts` `customer_say` branch; `guardrails.ts` `guardrailReply`.
 
 Evidence: `src/harness/environment.ts` `recallWanderers`; `move_to` tool also refuses sales walking to waiting/entrance/reception.
 
-## Loop 7 — Morning outreach without a human opening the chat
+## Loop 7 — Inbound dial → Pam → transfer (no second instruction)
 
-**Detect.** Live providers, tick ≥ 3, no meeting, no beats, `!morningPitched`, no `pendingCustomer`, `salesTurns === 0`.
+The player only **dials** (or types while idle). They do not tell Pam to pick up or Jim to take the transfer.
 
-**React.** Straw-draw beat list; winner `pitch` with `openingPitch`.
+**Detect.** Client `dial` to Jim or Dwight (or first `customer_say` while `callPhase === idle`).
 
-**Continue.** Chat waits on the customer. The scene does not start from a human action — a stated product requirement.
+**React.** `queueInboundCall`: `phone ring` → Pam “I’ll get it.” → pickup → `pamPickupLine`. After the caller answers her, `handlePamCallerReply` + `queueTransferCall`: transfer tone, sales hello, `callPhase = live`.
 
-Evidence: `maybeQueueMorningOutreach` in `beats.ts`; Mock `MORNING` ops in `mockEngine.ts`.
+**Continue.** Jim or Dwight wait on the line. Floor beats still run. Hangup (`hangUpCall` / bye) clears phone beats and returns the speaker to the desk.
+
+Evidence: `queueInboundCall`, `handlePamCallerReply`, `queueTransferCall`, `hangUpCall` in `beats.ts`; Mock `onCustomerSay` in `mockEngine.ts`.
 
 ## Build-time autonomous loop (agent building the product)
 

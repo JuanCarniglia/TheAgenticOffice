@@ -1,8 +1,8 @@
 # The Agentic Office
 
-A vintage PC game of a paper company run by AI agents. Five workers live on an isometric floorplan. You sit in the lobby as the customer. Jim or Dwight pitch you paper; Michael, Angela, and Pam keep the office moving.
+A vintage PC game of a paper company run by AI agents. Five workers live on an isometric floorplan. You are the **inbound caller**. Pam picks up, chats, and transfers you to Jim or Dwight; Michael and Angela keep the office moving.
 
-Two processes, one TypeScript repo: a Phaser 3 game in the browser, and a local harness that ticks the office, runs tools, and (optionally) calls an LLM.
+Two processes, one TypeScript repo: a Phaser 3 game in the browser, and a local harness that ticks the office, runs tools, and (optionally) calls an LLM. After `npm run build`, the harness can serve the game itself (Docker / ECS).
 
 ## Docs
 
@@ -14,6 +14,7 @@ Two processes, one TypeScript repo: a Phaser 3 game in the browser, and a local 
 | [Harness / Evaluation](docs/HARNESS_EVALUATION.md) | Tests, evals, review loops, traces, budgets |
 | [Autonomous Loop Evidence](docs/AUTONOMOUS_LOOP.md) | Detect → react → continue without a new human instruction |
 | [AI Development Log](docs/AI_DEVELOPMENT_LOG.md) | Workflow, iterations, failures, corrections, human decisions |
+| [AWS ECS deploy](devops/README.md) | One Fargate task: game + WebSocket behind an ALB |
 
 ## Setup
 
@@ -55,7 +56,7 @@ That starts **two processes in parallel** (`concurrently`):
 | `game` (Vite) | http://127.0.0.1:5178/ | Phaser UI, intro, settings, office |
 | `harness` (tsx) | http://127.0.0.1:8787 | Clock, agents, tools, WebSocket `/ws` |
 
-Open the game URL. Click through the intro, pick a company goal and provider, then **Open Office**.
+Open the game URL. Click through the intro, pick a company goal, provider, and sound, then **Open Office**. Dial Jim or Dwight — the phone rings at Pam’s desk first.
 
 Individual processes:
 
@@ -72,6 +73,7 @@ Vite proxies `/ws`, `/health`, and `/session` to the harness. If the harness is 
 npm run eval        # offline guardrail / commerce / goal eval (no API keys)
 npm run typecheck   # tsc --noEmit
 npm run build       # typecheck + Vite production bundle
+npm start           # harness only; serves dist/ when index.html exists
 ```
 
 ## Dependencies (high level)
@@ -90,7 +92,7 @@ None are required to play.
 
 | Provider | When used | Notes |
 | --- | --- | --- |
-| None (Mock) | Default | Scripted ticks, straw draw, sales lines, floor bits |
+| None (Mock) | Default | Scripted ticks, inbound-call beats, canned sales lines, floor bits |
 | OpenAI | Settings → OpenAI | Default model `gpt-4o-mini`. Network call per **novel** customer reply |
 | Anthropic | Settings → Anthropic | Default model `claude-sonnet-4-0` |
 | Cursor | Settings → Cursor | Local Cursor agent in a sandboxed temp directory; office tools only (no shell/files/web) |
@@ -99,11 +101,14 @@ Fonts load from Google Fonts (`Press Start 2P`, `VT323`). The game still boots i
 
 ## Play loop
 
-1. Company goal (close one sale, make $250 / $1000 / $2000, ring the $100 bell, hold list price, or a short custom goal).
-2. Morning: Jim and Dwight draw straws. The short straw opens customer chat from the desk.
-3. You type one short line (paper, qty, yes/no). Off-topic, commands, URLs, and token dumps are refused.
-4. A yes rings up warehouse stock and cash. Low stock sends Angela to Pam; a mill truck restocks later at 20% of list.
-5. The floor keeps running: standup, fires Dwight puts out, faxes, coffee, Michael yelling WHAZUUUP.
+1. Company goal (close one phone sale, make $250 / $1000 / $2000, ring the $100 bell, hold list price, or a short custom goal).
+2. Dial **Jim** or **Dwight** (or type — idle lines start the same inbound call). The phone rings at Pam’s desk.
+3. Pam greets you. Small talk is fine. She transfers to whoever you asked for.
+4. Chat first; a quote comes when you ask. **Yes / ok / sounds good** only rings up **after** a quote. A spec change (“recycled, legal, 35”) updates the ticket instead of closing the old one.
+5. **HANG UP** or type bye. Low stock sends Angela to Pam; a mill truck restocks later at 20% of list.
+6. The floor keeps running: standup, fires Dwight puts out, faxes, coffee, Michael yelling WHAZUUUP.
+
+Settings **Sound** (Web Audio) plays ring / pickup / transfer / hangup, the $100 bell, and UI beeps. Typewriter timing is on chat lines and floor balloons.
 
 ## Ports
 

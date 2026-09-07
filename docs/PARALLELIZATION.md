@@ -21,7 +21,7 @@ On each harness tick, independent subsystems share `OfficeState` under a single 
 | Stream | Parallel with | Blocked by |
 | --- | --- | --- |
 | Clock + HUD books | everything | nothing |
-| Floor beats (fire, fax, coffee, Whazup) | sales wait | meeting, existing beat queue |
+| Floor beats (inbound call, fire, fax, coffee, Whazup) | sales wait | meeting, existing beat queue |
 | Wanderer recall (desks) | beats | meeting / active beat |
 | Guardrail screen | before any model | nothing — fail closed |
 | Canned sales cache | skips LLM | miss → live agent |
@@ -34,7 +34,7 @@ The important split after the token incident: **ambient office ≠ model**. Scri
 
 Beats are a queue of atomic actions, but many scenes **stage multiple agents in the same beat list** so they play as a simultaneous scene, not a single narrator.
 
-**Morning outreach** (`maybeQueueMorningOutreach`): Jim and Dwight both get `status`, both `say`, then one `pitch` — straw draw without a human click.
+**Inbound call** (`queueInboundCall`): Pam status + say + `phone` ring/pickup, then transfer beats (`queueTransferCall`) move Jim or Dwight onto the line — two people in one scene, no straw draw.
 
 **Coffee** (`queueCoffee`): Jim and Pam both `move` to `kitchen`, both `say` `"..."`, both return. Two sprites walk at once on the next ticks.
 
@@ -46,7 +46,7 @@ Beats are a queue of atomic actions, but many scenes **stage multiple agents in 
 
 **Fire**: Dwight leaves the bullpen while others keep their last status; the fire sprite is a separate render stream (`OfficeScene.showFire`).
 
-Evidence: `src/harness/beats.ts` (`queueCoffee`, `queueSaleCelebration`, `maybeQueueMorningOutreach`), `src/harness/environment.ts` (`applyLogin`, `applyStandup`).
+Evidence: `src/harness/beats.ts` (`queueInboundCall`, `queueTransferCall`, `queueCoffee`, `queueSaleCelebration`), `src/harness/environment.ts` (`applyLogin`, `applyStandup`).
 
 ## 4. What is explicitly *not* parallel (and why)
 
@@ -77,6 +77,6 @@ During implementation, tool calls were batched (status + diff + log, or several 
 ## 6. How to observe it
 
 1. `npm run dev` — two colored `concurrently` prefixes (`game`, `harness`).
-2. Open the office in Mock, **Fast**. Watch login statuses, straw draw (two speakers), then the chat open **without you typing**.
-3. Wait for coffee or fire: two people move, or Dwight peels off while the sales chat still waits on you.
+2. Open the office in Mock, **Fast**. Dial Jim or Dwight. Hear the ring; Pam picks up while Jim and Dwight stay at their desks. After you answer her, the transfer and sales hello play without another click.
+3. Wait for coffee or fire: two people move, or Dwight peels off while you are still on the line.
 4. Harness stdout: `[office …] [tick]` vs `[event]` vs `[sales]` / `[cursor]` — clock events continue while a live `cursor` sales-reply is in flight (next ticks no-op on `busy`, then resume).

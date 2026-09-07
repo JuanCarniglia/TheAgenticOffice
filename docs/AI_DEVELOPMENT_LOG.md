@@ -1,6 +1,6 @@
 # AI Development Log
 
-Greenfield, 6–7 Sep 2026. One human operator, Cursor agents in-repo. No git commits yet; this log is reconstructed from the implementation chat and the current tree.
+Greenfield, 6–7 Sep 2026. One human operator, Cursor agents in-repo. `main` was first committed as **Initial Version** (7 Sep ~18:54). This log is reconstructed from the implementation chat and the current tree.
 
 ## How the work was run
 
@@ -135,7 +135,29 @@ Human: bought items, stock unchanged.
 
 Human: engineering spec, system map, parallelization, harness, autonomous loops, development log, README.
 
-**Shipped:** this `docs/` set, root README, `npm run eval` (22 offline cases).
+**Shipped:** first `docs/` set, root README, `npm run eval` (then 22 offline cases).
+
+### 2026-09-07 afternoon — You are the caller
+
+The lobby walk-in / straw-draw open was replaced by a **phone**.
+
+**Shipped:**
+- Client `dial` / `hangup`; harness `phone` events (`ring` / `pickup` / `transfer` / `hangup`)
+- `callPhase`: idle → ringing → pam → live
+- Pam answers first (`pamPickupLine`); small talk; transfer to the desk the caller asked for
+- Call window: CALL — JIM/DWIGHT, HANG UP; typewriter on chat and balloons
+- Settings **Sound** + Web Audio (desk phone, bell, beeps)
+- Guardrails: customer channel allows phone chit-chat; line cap 180 / 40
+- `tryCloseSale`: yes/ok only after a quote; “recycled, legal 35” requotes, does not ring the A3
+- `looksLikeHangup` (bye ≠ “by the way”)
+- Default goal: close one **phone** sale
+- Eval grown to **41** cases
+
+### 2026-09-07 afternoon — One process in the cloud
+
+Human: ship somewhere besides localhost.
+
+**Shipped:** harness serves `dist/` when present (`npm start`); `HOST` bind; Docker + Terraform ECS/Fargate/ALB under `devops/`. S3 is not used — the office is a long-lived WebSocket process. First git commit: **Initial Version**.
 
 ## Human decisions (index)
 
@@ -144,7 +166,7 @@ Human: engineering spec, system map, parallelization, harness, autonomous loops,
 | Phaser browser, not Godot/Electron | Human |
 | Own API keys + LangGraph-style harness, not Ollama-only | Human |
 | Mock must work without keys | Plan (human-approved) |
-| Player is the customer | Human |
+| Player is the customer (later: the inbound caller) | Human |
 | Fifth worker Dwight | Human |
 | Cursor as a provider | Human |
 | Fail-closed business guardrails | Human |
@@ -153,6 +175,8 @@ Human: engineering spec, system map, parallelization, harness, autonomous loops,
 | Reorder via Angela→Pam at 20% cost | Human |
 | Cut token spend hard | Human |
 | Extra dollar goals | Human |
+| Phone, not lobby; caller chooses Jim or Dwight | Human |
+| ECS/Fargate deploy (one task, game + WS) | Human |
 
 ## Agent decisions (index)
 
@@ -163,6 +187,8 @@ Human: engineering spec, system map, parallelization, harness, autonomous loops,
 | Cursor SDK + tool denylist, not fake OpenAI base URL | Agent |
 | Kill per-tick LLM; slim board; sales cache | Agent |
 | Delay mill truck so STOCK is observable | Agent |
+| Quote-gated close; spec change updates pitch | Agent |
+| Inbound call beats (Pam first) instead of straw-draw pitch | Agent |
 | Goal stamp after celebration, not on first “ok” | Agent |
 | Fallback to mock on provider start failure | Agent |
 
@@ -172,8 +198,9 @@ Human: engineering spec, system map, parallelization, harness, autonomous loops,
 2. **Supervisor-on-every-tick** — looks agentic, invoices like a training run.
 3. **Prompt-only safety** — insufficient; screen in code.
 4. **Instant restock** — hides the sale; delayed side effects are part of the sim.
-5. **Win condition on regex “yes”** — too eager; wait for the economic event + beat.
+5. **Win condition on regex “yes”** — too eager; wait for the economic event + beat. A lone “yes” with no quote is still not a buy.
+6. **Straw-draw first pitch** — fought the phone fantasy; inbound call through Pam is the shipping loop.
 
 ## What “done” means now
 
-The office is a playable local demo: mock or live sales voice, real warehouse math, visible multi-agent floor, bounded spend. It is not a swarm of five always-on coding agents — that was the v1 drawing, and the log above is why it is not the shipping loop.
+The office is a playable demo (local two-process, or one container on ECS): inbound phone sale, mock or live sales voice, real warehouse math, visible multi-agent floor, bounded spend. It is not a swarm of five always-on coding agents — that was the v1 drawing, and the log above is why it is not the shipping loop.

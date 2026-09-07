@@ -13,7 +13,8 @@ Context is sliced on purpose. A live model never receives the whole company OS u
 | Personal queue | `state.queues[agentId]` | That worker, HUD inspect | Session |
 | Short-term memory | last 8 facts per agent | Prompt / recall | Session |
 | Long-term memory | `data/memory.json` | `remember` / `recall` tools; keyword score | Across sessions |
-| Customer chat log | `state.customerLog` | Salesperson on a live tick (last 4–6 lines) | Session |
+| Phone log | `state.customerLog` | Pam on pickup; salesperson on a live tick (last 4–6 lines) | Session |
+| Call phase | `state.callPhase` (`idle` / `ringing` / `pam` / `live`) | Beats, session, `pitch_customer` gate | Session |
 | Sales reply cache | in-memory map in `salesScript.ts` | Harness, skips LLM on repeat asks | Process |
 | Guardrail rules | `BUSINESS_GUARDRAIL_RULES` + `screenHumanText` | Injected into live prompts; enforced in code | Always |
 | Token meter | `todayTokens` on the books | HUD BOOKS; tick gate | Operating day |
@@ -28,15 +29,15 @@ Defined in `src/shared/roster.ts`. Org roles gate tools (`assign_task`, `call_me
 | --- | --- | --- | --- |
 | **Michael** | CEO | `manager_office` | Posts the goal, nags the close, congratulates, yells WHAZUUUP |
 | **Angela** | PM | `accounting` | Owns the board and price sheet; walks to Pam on reorder |
-| **Jim** | Sales | `bullpen_sales` | Primary customer voice (dry, never pushy); coffee with Pam |
-| **Dwight** | Sales | `bullpen_dwight` | Same sale, opposite temperament; recites GSM; puts out fires |
-| **Pam** | HR / front desk | `reception` (stand-slot left of the counter) | Seats the customer, logs, rings the $100 bell, mill truck, fax run |
+| **Jim** | Sales | `bullpen_sales` | Primary phone voice (dry, never pushy); takes Pam’s transfer; coffee with Pam |
+| **Dwight** | Sales | `bullpen_dwight` | Same sale, opposite temperament; recites GSM when asked; puts out fires |
+| **Pam** | HR / front desk | `reception` (stand-slot left of the counter) | Answers line one, small talk, transfers; logs; rings the $100 bell; mill truck; fax |
 
 A sixth logical actor is the **Supervisor**, which is **not a sprite**. In v1 it was planned as LangGraph `createSupervisor`. In the shipping loop it is the **harness tick**: schedule + beats + (optional) one sales agent. Michael is the character who announces; the session is the router.
 
 The **human** is two channels:
 
-- **Customer** (`customer_say`) — lobby chat, Jim or Dwight only
+- **Caller** (`dial` / `customer_say` / `hangup`) — inbound line. Pam answers first; Jim or Dwight after transfer
 - **HQ** (`human_reply`) — balloon answers when someone `ask_human`s
 
 ## 3. Tools
@@ -49,7 +50,7 @@ All workers share the LangChain tool list in `src/harness/tools.ts`. Cursor wrap
 | `watercooler` | all | Slack-like broadcast + gossip memory |
 | `dm` | all | Private mailbox + whisper balloon |
 | `ask_human` | all | HQ balloon; session waits |
-| `pitch_customer` | Jim, Dwight | Customer chat line; wait; do not invent the reply |
+| `pitch_customer` | Jim, Dwight | One line on a **live** call; wait; do not invent the reply. Refused if the caller hung up |
 | `ring_up` | Jim, Dwight | Decrement SKU, credit cash, maybe reorder + celebration |
 | `assign_task` | Michael, Angela | Ticket on board + owner queue |
 | `update_task` | all | Status/note on a ticket |
@@ -71,9 +72,10 @@ Independent streams that share `OfficeState` but do not all need an LLM:
    ┌────────────────┼──────────────┬─────────────┬───────────┤
    ▼                ▼              ▼             ▼           ▼
  schedule        wanderers      floor beats   sales LLM    mock
- login/standup   recall Jim/    fire, fax,    novel chat   scripted
- lunch/wrap      Dwight/Pam     coffee,       reply only   MORNING/
-                 to desks       reorder,                    IDLE
+ login/standup   recall Jim/    inbound call, novel chat   scripted
+ lunch/wrap      Dwight/Pam     fire, fax,    reply only   MORNING/
+                 to desks       coffee,                    IDLE
+                                reorder,
                                 Whazup,
                                 mill truck
 ```
@@ -83,7 +85,8 @@ Independent streams that share `OfficeState` but do not all need an LLM:
 | **Office clock** | interval `SPEED_MS` | no | `session.ts`, `clock.ts` |
 | **Day schedule** | clock hits 09:00 / 10:00 / 12:00 / 17:00 | no | `environment.ts` |
 | **Floor beats** | tick, if no meeting and queue empty enough | no | `beats.ts` |
-| **Sales conversation** | `lastCustomerText` set after a screened customer line | yes, unless canned cache hits | `salesScript.ts`, `graph.ts`, `cursorEngine.ts` |
+| **Inbound call** | client `dial` (or first `customer_say` while idle) | no (Pam + hello are scripted) | `queueInboundCall`, `handlePamCallerReply`, `hangUpCall` |
+| **Sales conversation** | `lastCustomerText` on a **live** line after a screened caller line | yes, unless canned cache hits | `salesScript.ts`, `graph.ts`, `cursorEngine.ts` |
 | **Commerce** | purchase intent or `ring_up` | no | `commerce.ts`, `officeState.applySale` |
 | **Guardrails** | every `customer_say`, `human_reply`, `start.goal` | no | `guardrails.ts` |
 | **Memory persist** | `remember` / mock gossip | no | `memory.ts` |
@@ -113,15 +116,22 @@ flowchart TD
   Cursor --> Clock
   Clock --> Tick[tick]
   Tick --> Beats[drainBeat / maybeQueueFloorBits]
-  Beats --> Sales{lastCustomerText?}
+  Dial[dial or first customer_say] --> Ring[callPhase ringing]
+  Ring --> PamPickup[Pam greeting]
+  PamPickup --> PamTalk{caller replies}
+  PamTalk -->|bye| Hangup[hangUpCall]
+  PamTalk -->|else| Xfer[transfer to Jim or Dwight]
+  Xfer --> Live[callPhase live]
+  Beats --> Sales{lastCustomerText and live?}
   Sales -->|canned hit| Chat[deliverSalesLine]
-  Sales -->|novel + live| LLM[createReactAgent or Cursor Agent.send]
+  Sales -->|novel + live provider| LLM[createReactAgent or Cursor Agent.send]
   Sales -->|novel + mock| Script[MockEngine.salesReply]
   LLM --> Pitch[pitch_customer]
   Pitch --> Wait[pendingCustomer]
   Wait -->|customer_say| Guard{screenHumanText}
   Guard -->|fail| Refuse[in-character refuse]
-  Guard -->|purchase| Sale[applySale]
+  Guard -->|purchase after quote| Sale[applySale]
+  Guard -->|new spec| Requote[update lastPitchSku]
   Guard -->|else| Sales
   Sale --> Celebrate[queueSaleCelebration]
   Sale -->|qty at reorderAt| Reorder[queueReorderAsk Angela then Pam]
@@ -131,11 +141,11 @@ flowchart TD
 
 **Live Cursor:** `Agent.create` in a temp sandbox, `disallowedTools` includes shell/read/edit/grep/web/delete/semSearch/…. Custom tools only. `run.wait()`, record billed tokens (or a char/4 estimate). Agent is disposed after the turn.
 
-**Mock:** `MORNING` (cooler → straw → pitch), then idle floor chatter while waiting on the customer, then `AFTERNOON` board updates. Purchase uses the same `applySale` path as live.
+**Mock:** `MORNING` (cooler: Pam owns the phone, Jim/Dwight wait — **caller chooses**), then idle floor chatter while a call is open, then `AFTERNOON` board updates. Purchase uses the same `tryCloseSale` / `applySale` path as live.
 
 ## 6. Coordination toward the goal
 
-On session start the supervisor-as-harness writes a five-ticket board (`AO-1`…`AO-5`): name the sale, price the deal, close the lobby, seat/log, backup close.
+On session start the supervisor-as-harness writes a five-ticket board (`AO-1`…`AO-5`): name the week’s sale, price the inbound call, close the inbound call, answer and transfer, backup close.
 
 Win is **not** “all tickets done.” It is `goalReached(goal, todayEarnings)` after a real ring-up, then a `review` beat that emits `goal_met` (the QUARTERLY REVIEW stamp) once Michael’s congratulations have played.
 
