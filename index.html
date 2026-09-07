@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Agentic Office</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0d0c0a;
+        overflow: hidden;
+      }
+      #game {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      #office-hud {
+        position: absolute;
+        pointer-events: none;
+        z-index: 18;
+        overflow: hidden;
+      }
+      #office-hud .hud-inner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1280px;
+        height: 720px;
+        transform-origin: top left;
+      }
+      #office-hud .hud-panel {
+        position: absolute;
+        pointer-events: auto;
+        background: rgba(212, 196, 168, 0.92);
+        border: 2px solid #1a1814;
+        box-sizing: border-box;
+        font-family: VT323, monospace;
+        color: #111;
+      }
+      #office-hud .hud-title,
+      #office-hud #hud-clock,
+      #office-hud #hud-books {
+        color: #000066;
+        font-size: 20px;
+        line-height: 1.15;
+      }
+      #office-hud .hud-scroll {
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 18px;
+        line-height: 1.2;
+        scrollbar-width: thin;
+        scrollbar-color: #404040 #e8e0cc;
+      }
+      #office-hud .hud-scroll::-webkit-scrollbar {
+        width: 10px;
+      }
+      #office-hud .hud-scroll::-webkit-scrollbar-track {
+        background: #e8e0cc;
+        border-left: 1px solid #808080;
+      }
+      #office-hud .hud-scroll::-webkit-scrollbar-thumb {
+        background: #808080;
+        border: 1px solid #404040;
+      }
+      #office-hud .hud-goal {
+        left: 12px;
+        top: 12px;
+        width: 430px;
+        height: 94px;
+        padding: 6px 8px 6px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #office-hud #hud-goal {
+        flex: 1;
+        min-height: 0;
+        color: #111;
+        font-size: 20px;
+      }
+      #office-hud .hud-cooler {
+        left: 12px;
+        top: 114px;
+        width: 230px;
+        height: 190px;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+      }
+      #office-hud .hud-cooler .hud-title {
+        flex: none;
+        margin-bottom: 4px;
+      }
+      #office-hud #hud-cooler {
+        flex: 1;
+        min-height: 0;
+      }
+      #office-hud .hud-tasks {
+        right: 12px;
+        top: 12px;
+        width: 300px;
+        height: 210px;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+      }
+      #office-hud .hud-tasks .hud-title {
+        flex: none;
+        margin-bottom: 4px;
+      }
+      #office-hud #hud-tasks {
+        flex: 1;
+        min-height: 0;
+      }
+      #office-hud .hud-inspect {
+        right: 12px;
+        top: 230px;
+        width: 300px;
+        height: 110px;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+      }
+      #office-hud #hud-inspect {
+        flex: 1;
+        min-height: 0;
+      }
+      #office-hud .hud-meeting {
+        position: absolute;
+        left: 50%;
+        top: 90px;
+        transform: translateX(-50%);
+        width: 460px;
+        min-height: 44px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+        background: rgba(212, 160, 23, 0.94);
+        border: 2px solid #1a1814;
+        font-family: VT323, monospace;
+        font-size: 20px;
+        color: #111;
+        text-align: center;
+        pointer-events: none;
+      }
+      #office-hud .hud-status {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        height: 36px;
+        background: rgba(13, 12, 10, 0.88);
+        border: 1px solid #d4a017;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        pointer-events: none;
+      }
+      #office-hud #hud-status {
+        font-family: VT323, monospace;
+        font-size: 20px;
+        color: #3cff6e;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #office-hud #hud-stamp {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) rotate(-12deg);
+        font-family: "Press Start 2P", monospace;
+        font-size: 28px;
+        color: #8b1e1e;
+        text-align: center;
+        -webkit-text-stroke: 4px #f0e6c8;
+        paint-order: stroke fill;
+        pointer-events: none;
+        z-index: 2;
+      }
+      #office-hud #hud-stamp.hud-stamp-play {
+        animation: hud-stamp 2.4s ease-out forwards;
+      }
+      @keyframes hud-stamp {
+        0% { transform: translate(-50%, -50%) rotate(-12deg) scale(1.18); opacity: 1; }
+        12% { transform: translate(-50%, -50%) rotate(-12deg) scale(1); opacity: 1; }
+        70% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      #game::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 2px,
+            rgba(0, 0, 0, 0.14) 2px,
+            rgba(0, 0, 0, 0.14) 3px
+          ),
+          radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%);
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <script type="module" src="/src/game/main.ts"></script>
+  </body>
+</html>

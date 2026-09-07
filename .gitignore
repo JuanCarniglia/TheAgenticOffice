@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.DS_Store
+*.log
+.preview
+data/memory.json
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+terraform.tfvars
+tfplan

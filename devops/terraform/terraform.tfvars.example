@@ -1,0 +1,19 @@
+aws_region  = "us-east-1"
+project_name = "the-agentic-office"
+image_tag    = "latest"
+
+# Fargate size. 512 CPU / 1024 MiB is enough for mock + occasional LLM calls.
+cpu    = 512
+memory = 1024
+
+# Session state is in-memory. Do not scale this up without an external store.
+desired_count = 1
+
+# Optional HTTPS. Paste an ACM certificate ARN in this region to enable 443.
+acm_certificate_arn = ""
+
+# Leave empty to run mock mode. Do not commit real keys — use terraform.tfvars
+# (gitignored) or TF_VAR_openai_api_key.
+openai_api_key    = ""
+anthropic_api_key = ""
+cursor_api_key    = ""

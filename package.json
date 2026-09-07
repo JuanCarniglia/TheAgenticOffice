@@ -1,0 +1,40 @@
+{
+  "name": "the-agentic-office",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n game,harness -c cyan,magenta \"vite\" \"tsx watch src/harness/server.ts\"",
+    "dev:game": "vite",
+    "dev:harness": "tsx watch src/harness/server.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx src/harness/server.ts",
+    "eval": "tsx scripts/eval.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.31",
+    "@hono/node-server": "^1.19.6",
+    "@langchain/anthropic": "^1.0.1",
+    "@langchain/core": "^1.1.0",
+    "@langchain/langgraph": "^1.0.2",
+    "@langchain/langgraph-supervisor": "^1.0.4",
+    "@langchain/openai": "^1.1.0",
+    "dotenv": "^16.6.1",
+    "hono": "^4.10.3",
+    "phaser": "^3.90.0",
+    "tsx": "^4.20.6",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.2",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
