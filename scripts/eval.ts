@@ -6,7 +6,7 @@ import { seedStock } from "../src/shared/catalog.js";
 import { matchSkuFromText, qtyFromText, ringUp } from "../src/shared/commerce.js";
 import { screenHumanText, DAY_TOKEN_CAP } from "../src/shared/guardrails.js";
 import { looksLikeHangup, looksLikePurchase, looksLikeRejection } from "../src/shared/roster.js";
-import { goalReached } from "../src/shared/types.js";
+import { DEFAULT_GOAL, goalReached } from "../src/shared/types.js";
 import { cannedSalesReply, rememberSalesReply } from "../src/harness/salesScript.js";
 import { emptyState, tryCloseSale } from "../src/harness/officeState.js";
 
@@ -60,7 +60,7 @@ function eq<T>(a: T, b: T): boolean {
   check("guardrail allows phone small talk", chat.ok);
 }
 {
-  const ok = screenHumanText("Close a paper sale with the customer sitting in the lobby.", {
+  const ok = screenHumanText(DEFAULT_GOAL, {
     channel: "goal",
   });
   check("guardrail allows paper-sale company goal", ok.ok);
@@ -106,7 +106,7 @@ function eq<T>(a: T, b: T): boolean {
   check("hangup intent: bye", looksLikeHangup("bye"));
   check("hangup intent: thanks, goodbye", looksLikeHangup("thanks, goodbye"));
   check("hangup intent: by the way is not hangup", !looksLikeHangup("by the way, how much?"));
-  check("goalReached first-close", goalReached("Close a paper sale with the customer sitting in the lobby.", 1));
+  check("goalReached first-close", goalReached(DEFAULT_GOAL, 1));
   check("goalReached $1000 miss", !goalReached("Make $1000 today from paper sales.", 250));
   check("goalReached $1000 hit", goalReached("Make $1000 today from paper sales.", 1000));
 }
@@ -114,7 +114,7 @@ function eq<T>(a: T, b: T): boolean {
 // --- Canned sales cache (token-saving eval) ---
 {
   const state = emptyState({
-    goal: "Close a paper sale with the customer sitting in the lobby.",
+    goal: DEFAULT_GOAL,
     provider: "mock",
     model: "scripted-office",
     speed: "normal",
@@ -130,7 +130,7 @@ function eq<T>(a: T, b: T): boolean {
 
 {
   const state = emptyState({
-    goal: "Close a paper sale with the customer sitting in the lobby.",
+    goal: DEFAULT_GOAL,
     provider: "mock",
     model: "scripted-office",
     speed: "normal",
@@ -159,7 +159,7 @@ function eq<T>(a: T, b: T): boolean {
 
 {
   const state = emptyState({
-    goal: "Close a paper sale with the customer sitting in the lobby.",
+    goal: DEFAULT_GOAL,
     provider: "mock",
     model: "scripted-office",
     speed: "normal",

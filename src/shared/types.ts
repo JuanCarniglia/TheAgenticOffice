@@ -164,7 +164,7 @@ export const TICK_MINUTES = 1;
 export const DAY_START = 9 * 60;
 export const DAY_END = 17 * 60;
 
-export const DEFAULT_GOAL = "Close a paper sale with the caller on the line.";
+export const DEFAULT_GOAL = "Close a paper sale with customer calling on the phone.";
 
 export interface CompanyGoal {
   id: string;

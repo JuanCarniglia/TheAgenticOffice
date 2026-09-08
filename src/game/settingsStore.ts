@@ -1,5 +1,11 @@
 import { DEFAULT_GOAL, type Provider, type SimSpeed } from "../shared/types.js";
 
+/** Previous close-one preset lines. sessionStorage still has these from earlier play. */
+const RETIRED_CLOSE_ONE = new Set([
+  "Close a paper sale with the customer sitting in the lobby.",
+  "Close a paper sale with the caller on the line.",
+]);
+
 export interface GameSettings {
   provider: Provider;
   model: string;
@@ -22,7 +28,12 @@ export function loadSettings(): GameSettings {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const loaded = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } as GameSettings;
+    if (RETIRED_CLOSE_ONE.has(loaded.goal)) {
+      loaded.goal = DEFAULT_GOAL;
+      saveSettings(loaded);
+    }
+    return loaded;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

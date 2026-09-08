@@ -40,7 +40,7 @@ export class Hud {
           <div id="hud-cooler" class="hud-scroll">(quiet)</div>
         </div>
         <div class="hud-panel hud-tasks">
-          <div class="hud-title">JIRA BOARD</div>
+          <div class="hud-title">AGENT's TICKETS</div>
           <div id="hud-tasks" class="hud-scroll"></div>
         </div>
         <div class="hud-panel hud-inspect">
