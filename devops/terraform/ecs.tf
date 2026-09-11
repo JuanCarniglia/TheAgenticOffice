@@ -49,6 +49,9 @@ resource "aws_ecs_task_definition" "office" {
         { name = "NODE_ENV", value = "production" },
         { name = "HOST", value = "0.0.0.0" },
         { name = "PORT", value = tostring(local.port) },
+        { name = "PROVIDER", value = var.office_provider },
+        { name = "MODEL", value = var.office_model },
+        { name = "FLOOR", value = var.office_floor },
       ]
       secrets = [
         {

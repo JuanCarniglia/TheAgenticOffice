@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
@@ -30,7 +30,18 @@ const MIME: Record<string, string> = {
 };
 
 function isApiPath(pathname: string): boolean {
-  return pathname === "/health" || pathname === "/ws" || pathname.startsWith("/session");
+  return pathname === "/health" || pathname === "/config" || pathname === "/ws" || pathname.startsWith("/session");
+}
+
+function envLocks() {
+  return lockedOfficeOptionsFromEnv(process.env);
+}
+
+function withOfficeLocks(html: string): string {
+  const tag = `<script>window.__OFFICE_LOCKS__=${JSON.stringify(envLocks())};</script>`;
+  if (html.includes("__OFFICE_LOCKS__")) return html;
+  if (html.includes("</head>")) return html.replace("</head>", `${tag}</head>`);
+  return `${tag}${html}`;
 }
 
 function serveGame(req: IncomingMessage, res: ServerResponse): boolean {
@@ -54,13 +65,28 @@ function serveGame(req: IncomingMessage, res: ServerResponse): boolean {
     }
     file = join(DIST, "index.html");
   }
-  const st = statSync(file);
   const type = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
-  const cache = extname(file) === ".html" ? "no-cache" : "public, max-age=86400";
+  const isHtml = extname(file).toLowerCase() === ".html";
+  if (isHtml) {
+    const body = withOfficeLocks(readFileSync(file, "utf8"));
+    const buf = Buffer.from(body);
+    res.writeHead(200, {
+      "Content-Type": type,
+      "Content-Length": buf.length,
+      "Cache-Control": "no-cache",
+    });
+    if (req.method === "HEAD") {
+      res.end();
+      return true;
+    }
+    res.end(buf);
+    return true;
+  }
+  const st = statSync(file);
   res.writeHead(200, {
     "Content-Type": type,
     "Content-Length": st.size,
-    "Cache-Control": cache,
+    "Cache-Control": "public, max-age=86400",
   });
   if (req.method === "HEAD") {
     res.end();
@@ -75,17 +101,19 @@ const session = new OfficeSession();
 
 app.use("/*", cors());
 
-function envLocks() {
-  return lockedOfficeOptionsFromEnv({
-    PROVIDER: process.env.PROVIDER,
-    MODEL: process.env.MODEL,
-    FLOOR: process.env.FLOOR,
-  });
+function noStoreJson(c: { header: (k: string, v: string) => void }) {
+  c.header("Cache-Control", "no-store");
 }
 
-app.get("/health", (c) =>
-  c.json({ ok: true, service: "agentic-office-harness", game: SERVE_GAME, locks: envLocks() }),
-);
+app.get("/health", (c) => {
+  noStoreJson(c);
+  return c.json({ ok: true, service: "agentic-office-harness", game: SERVE_GAME, locks: envLocks() });
+});
+
+app.get("/config", (c) => {
+  noStoreJson(c);
+  return c.json({ locks: envLocks() });
+});
 
 app.get("/session", (c) => c.json(session.snapshot()));
 

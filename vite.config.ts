@@ -11,6 +11,7 @@ export default defineConfig({
         ws: true,
       },
       "/health": "http://127.0.0.1:8787",
+      "/config": "http://127.0.0.1:8787",
       "/session": "http://127.0.0.1:8787",
     },
   },

@@ -58,6 +58,7 @@ export function saveSettings(settings: GameSettings): void {
 }
 
 let locksCache: LockedOfficeOptions | undefined;
+let locksFetched = false;
 
 function sanitizeLocks(raw: LockedOfficeOptions | undefined): LockedOfficeOptions {
   const provider = parseProvider(raw?.provider);
@@ -70,31 +71,51 @@ function sanitizeLocks(raw: LockedOfficeOptions | undefined): LockedOfficeOption
   };
 }
 
-/** Last successful `/health` locks, if the harness has answered. */
+function embeddedLockedOptions(): LockedOfficeOptions {
+  if (typeof window === "undefined") return {};
+  return sanitizeLocks((window as Window & { __OFFICE_LOCKS__?: LockedOfficeOptions }).__OFFICE_LOCKS__);
+}
+
+/** Last known pins (embedded page config or `/health`). */
 export function peekLockedOptions(): LockedOfficeOptions | undefined {
-  return locksCache;
+  if (locksCache) return locksCache;
+  const embedded = embeddedLockedOptions();
+  return hasLockedOptions(embedded) ? embedded : undefined;
 }
 
 export function hasLockedOptions(locks: LockedOfficeOptions): boolean {
   return Boolean(locks.provider || locks.model || locks.floor);
 }
 
-/** Harness `.env` pins (`PROVIDER` / `MODEL` / `FLOOR`). Retries until `/health` succeeds. */
-export async function fetchLockedOptions(): Promise<LockedOfficeOptions> {
-  if (locksCache) return locksCache;
+async function fetchLocksFrom(url: string): Promise<LockedOfficeOptions> {
   const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), 2500);
+  const timer = window.setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch("/health", { signal: ctrl.signal });
+    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return {};
     const data = (await res.json()) as { locks?: LockedOfficeOptions };
-    locksCache = sanitizeLocks(data.locks);
-    return locksCache;
+    return sanitizeLocks(data.locks);
   } catch {
     return {};
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+/** Pins from harness env. Production injects them on the page; `/health` is the fallback. */
+export async function fetchLockedOptions(): Promise<LockedOfficeOptions> {
+  const embedded = embeddedLockedOptions();
+  if (hasLockedOptions(embedded)) {
+    locksCache = embedded;
+    locksFetched = true;
+    return embedded;
+  }
+  if (locksFetched && locksCache) return locksCache;
+  const fromHealth = await fetchLocksFrom("/health");
+  const next = hasLockedOptions(fromHealth) ? fromHealth : await fetchLocksFrom("/config");
+  locksCache = hasLockedOptions(next) ? next : fromHealth;
+  locksFetched = true;
+  return locksCache;
 }
 
 export function settingsWithLocks(settings: GameSettings, locks: LockedOfficeOptions): GameSettings {

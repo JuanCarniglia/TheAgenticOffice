@@ -11,7 +11,7 @@ import { CustomerChat } from "../objects/CustomerChat.js";
 import { OfficeMenu } from "../objects/OfficeMenu.js";
 import { FONT_PIXEL } from "../style.js";
 import { ensureFireAnim } from "../sprites/officeFire.js";
-import { officeLog, summarizeEvent } from "../../shared/trace.js";
+import { officeLogEvent } from "../../shared/trace.js";
 import { HUMAN_MAX_CHARS, screenHumanText } from "../../shared/guardrails.js";
 
 export class OfficeScene extends Phaser.Scene {
@@ -162,7 +162,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private onOfficeEvent(event: OfficeEvent): void {
-    officeLog("ui", summarizeEvent(event));
+    officeLogEvent("ui", event);
     const settings = settingsWithLocks(loadSettings(), peekLockedOptions() ?? {});
     switch (event.type) {
       case "session_started":
@@ -482,6 +482,7 @@ export class OfficeScene extends Phaser.Scene {
     this.hideFire();
     this.fire?.destroy();
     this.fire = null;
+    this.client?.send({ type: "stop" });
     this.client?.close();
     this.client = null;
     for (const w of this.workers.values()) w.destroy();

@@ -6,6 +6,7 @@ import { seedStock } from "../src/shared/catalog.js";
 import { matchSkuFromText, qtyFromText, ringUp } from "../src/shared/commerce.js";
 import { screenHumanText, DAY_TOKEN_CAP } from "../src/shared/guardrails.js";
 import { linePlayMs, thinkDelayMs, typeDurationMs } from "../src/shared/speech.js";
+import { isQuietOfficeEvent } from "../src/shared/trace.js";
 import { looksLikeAllStock, looksLikeHangup, looksLikePurchase, looksLikeRejection } from "../src/shared/roster.js";
 import {
   applyLockedOfficeOptions,
@@ -410,6 +411,10 @@ check("parseProvider ignores junk", parseProvider("foo") === undefined);
 check("parseFloorMode accepts live", parseFloorMode("LIVE") === "live");
 check("parseModel ignores blank", parseModel("  ") === undefined);
 check("locked env empty is none", Object.keys(lockedOfficeOptionsFromEnv({})).length === 0);
+check(
+  "locked env accepts OFFICE_PROVIDER alias",
+  lockedOfficeOptionsFromEnv({ OFFICE_PROVIDER: "OpenAI" }).provider === "openai",
+);
 {
   const next = applyLockedOfficeOptions(
     { goal: DEFAULT_GOAL, provider: "mock", model: "scripted-office", speed: "normal", floor: "scripted" },
@@ -443,6 +448,9 @@ check("locked env empty is none", Object.keys(lockedOfficeOptionsFromEnv({})).le
   check("sale thanks play time covers think and type", play > thinkDelayMs(thanks) + typeDurationMs(thanks));
   check("sale thanks play time is not instant", play > 2000);
 }
+check("tick events are quiet in the log", isQuietOfficeEvent("tick"));
+check("clock events are quiet in the log", isQuietOfficeEvent("clock"));
+check("sale events stay in the log", !isQuietOfficeEvent("sale"));
 }
 
 const failed = cases.filter((c) => !c.ok);

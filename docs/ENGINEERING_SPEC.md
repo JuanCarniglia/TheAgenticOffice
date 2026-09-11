@@ -142,7 +142,7 @@ A build is acceptable when all of the following hold.
 
 Canonical types live in `src/shared/types.ts`.
 
-**Client → harness:** `start` (includes optional `floor`), `customer_say`, `human_reply`, `dial`, `hangup`, `set_speed`.
+**Client → harness:** `start` (includes optional `floor`), `customer_say`, `human_reply`, `dial`, `hangup`, `set_speed`, `stop` (MENU / leave office — clock and LLMs halt).
 
 **Harness → game:** `session_started`, `tick`/`clock`, `say`/`whisper`/`watercooler`/`dm`, `meeting_*`, `customer_line`, `ask_human`, `move_to`, `task_update`/`queue_update`, `books`/`stock`/`sale`/`reorder_*`, `bell`, `phone` (`ring`/`pickup`/`transfer`/`hangup`), `fire`, `goal_met`, `office_locked`, `guardrail`, `error`, `trace`.
 

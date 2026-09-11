@@ -9,7 +9,7 @@ import {
   type AgentId,
 } from "../shared/types.js";
 import { isSales, looksLikeHangup } from "../shared/roster.js";
-import { officeLog, summarizeEvent } from "../shared/trace.js";
+import { officeLog, officeLogEvent } from "../shared/trace.js";
 import { HUMAN_MAX_CHARS, screenHumanText, tokenBudgetSpent } from "../shared/guardrails.js";
 import { advanceClock, formatClock } from "../shared/clock.js";
 import { emptyState, isLiveOffice, recordTokens, snapshot, tryCloseSale } from "./officeState.js";
@@ -61,11 +61,18 @@ export class OfficeSession {
 
   attach(ws: WebSocket): void {
     this.clients.add(ws);
-    ws.on("close", () => this.clients.delete(ws));
+    ws.on("close", () => {
+      this.clients.delete(ws);
+      if (this.clients.size === 0) this.stop();
+    });
   }
 
   async handle(message: ClientMessage): Promise<void> {
     officeLog("client", message.type, message);
+    if (message.type === "stop") {
+      this.stop();
+      return;
+    }
     this.lastPlayAt = Date.now();
     if (this.locked && message.type !== "start") return;
     if (message.type === "start") {
@@ -275,6 +282,7 @@ export class OfficeSession {
   }
 
   stop(): void {
+    this.locked = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.graph = null;
@@ -296,14 +304,7 @@ export class OfficeSession {
     this.locked = false;
     this.lastPlayAt = Date.now();
     this.threadId = `office-${Date.now()}`;
-    const locked = applyLockedOfficeOptions(
-      config,
-      lockedOfficeOptionsFromEnv({
-        PROVIDER: process.env.PROVIDER,
-        MODEL: process.env.MODEL,
-        FLOOR: process.env.FLOOR,
-      }),
-    );
+    const locked = applyLockedOfficeOptions(config, lockedOfficeOptionsFromEnv(process.env));
     const goalScreen = screenHumanText(locked.goal, { channel: "goal" });
     const goal = goalScreen.ok ? goalScreen.text : DEFAULT_GOAL;
     this.state = emptyState({ ...locked, goal });
@@ -374,14 +375,6 @@ export class OfficeSession {
     this.state.busy = true;
     this.state.tick += 1;
     this.state.clock = advanceClock(this.state.clock);
-    officeLog(
-      "tick",
-      `#${this.state.tick}`,
-      formatClock(this.state.clock),
-      this.state.provider,
-      this.state.pendingCustomer ? `waiting:${this.state.pendingCustomer.agentId}` : "free",
-      this.state.lastCustomerTo ? `reply-as:${this.state.lastCustomerTo}` : "",
-    );
     this.emit({ type: "tick", n: this.state.tick, time: formatClock(this.state.clock) });
     this.emit({ type: "clock", time: formatClock(this.state.clock) });
     try {
@@ -450,7 +443,7 @@ export class OfficeSession {
   }
 
   private emit(event: OfficeEvent): void {
-    officeLog("event", summarizeEvent(event));
+    officeLogEvent("event", event);
     if (event.type === "sale") {
       this.state.liveTurnsWithoutClose = 0;
       void this.rememberRequirement(

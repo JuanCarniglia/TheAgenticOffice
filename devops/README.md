@@ -51,7 +51,7 @@ The script:
 2. `docker build` + push tagged with the git sha
 3. Full `terraform apply` with that tag
 
-When it finishes, open the printed `office_url`. `/health` should return `{"ok":true,"service":"agentic-office-harness","game":true}`.
+When it finishes, open the printed `office_url`. `/health` should return `ok`, `game: true`, and `locks` from `PROVIDER` / `MODEL` / `FLOOR`.
 
 Manual equivalent:
 
@@ -73,6 +73,9 @@ terraform apply -var="image_tag=<tag>"
 | `desired_count` | `1` | Do not scale out; one in-memory office |
 | `acm_certificate_arn` | `""` | Set to enable HTTPS on 443 and redirect 80 |
 | `openai_api_key` etc. | `""` | Empty = mock mode still works |
+| `office_provider` | `""` | Becomes container `PROVIDER`. Locks Settings → Provider |
+| `office_model` | `""` | Becomes container `MODEL`. Locks Settings → Model |
+| `office_floor` | `""` | Becomes container `FLOOR`. Locks Settings → Floor intelligence |
 
 Keys can also be passed as `TF_VAR_openai_api_key`. `terraform.tfvars` is gitignored.
 

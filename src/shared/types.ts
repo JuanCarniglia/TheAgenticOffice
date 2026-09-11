@@ -131,12 +131,22 @@ export function parseModel(raw: string | undefined | null): string | undefined {
   return value || undefined;
 }
 
+function pickEnv(env: Record<string, string | undefined>, names: string[]): string | undefined {
+  const folded = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) folded.set(key.toLowerCase(), value);
+  for (const name of names) {
+    const value = folded.get(name.toLowerCase());
+    if (value?.trim()) return value;
+  }
+  return undefined;
+}
+
 export function lockedOfficeOptionsFromEnv(
   env: Record<string, string | undefined>,
 ): LockedOfficeOptions {
-  const provider = parseProvider(env.PROVIDER);
-  const model = parseModel(env.MODEL);
-  const floor = parseFloorMode(env.FLOOR);
+  const provider = parseProvider(pickEnv(env, ["PROVIDER", "OFFICE_PROVIDER"]));
+  const model = parseModel(pickEnv(env, ["MODEL", "OFFICE_MODEL"]));
+  const floor = parseFloorMode(pickEnv(env, ["FLOOR", "OFFICE_FLOOR", "FLOOR_INTELLIGENCE"]));
   return {
     ...(provider ? { provider } : {}),
     ...(model ? { model } : {}),
@@ -220,7 +230,8 @@ export type ClientMessage =
   | { type: "customer_say"; to: AgentId; text: string }
   | { type: "dial"; to: AgentId }
   | { type: "hangup" }
-  | { type: "set_speed"; speed: SimSpeed };
+  | { type: "set_speed"; speed: SimSpeed }
+  | { type: "stop" };
 
 /** Wall-clock idle before the office locks and returns to the title (no player chat). */
 export const IDLE_LOCK_MS = 3 * 60 * 1000;

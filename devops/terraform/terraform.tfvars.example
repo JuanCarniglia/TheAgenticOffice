@@ -17,3 +17,12 @@ acm_certificate_arn = ""
 openai_api_key    = ""
 anthropic_api_key = ""
 cursor_api_key    = ""
+
+# Lock Settings fields on prod (same as PROVIDER / MODEL / FLOOR in .env).
+# Empty = player can still choose. Example:
+# office_provider = "openai"
+# office_model    = "gpt-4o-mini"
+# office_floor    = "live"
+office_provider = ""
+office_model    = ""
+office_floor    = ""

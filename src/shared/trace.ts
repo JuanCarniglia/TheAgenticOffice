@@ -5,6 +5,15 @@ export function officeLog(scope: string, ...args: unknown[]): void {
   console.log(`[office ${ts}] [${scope}]`, ...args);
 }
 
+export function isQuietOfficeEvent(type: string): boolean {
+  return type === "tick" || type === "clock";
+}
+
+export function officeLogEvent(scope: string, event: { type: string } & Record<string, unknown>): void {
+  if (isQuietOfficeEvent(event.type)) return;
+  officeLog(scope, summarizeEvent(event));
+}
+
 export function summarizeEvent(event: { type: string } & Record<string, unknown>): string {
   switch (event.type) {
     case "say":

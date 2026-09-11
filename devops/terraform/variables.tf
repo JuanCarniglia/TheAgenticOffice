@@ -67,6 +67,24 @@ variable "cursor_api_key" {
   sensitive   = true
 }
 
+variable "office_provider" {
+  type        = string
+  description = "Lock Settings → Provider: mock, openai, anthropic, or cursor. Empty = player chooses."
+  default     = ""
+}
+
+variable "office_model" {
+  type        = string
+  description = "Lock Settings → Model id. Empty = player chooses."
+  default     = ""
+}
+
+variable "office_floor" {
+  type        = string
+  description = "Lock Settings → Floor intelligence: scripted or live. Empty = player chooses."
+  default     = ""
+}
+
 variable "log_retention_days" {
   type        = number
   description = "CloudWatch log retention."

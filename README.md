@@ -40,9 +40,9 @@ Copy `.env.example` to `.env` in the **repo root**. Keys stay on the harness —
 | `CURSOR_API_KEY` | Settings → Cursor | Cursor SDK agent (`composer-2.5` by default). Create a key in Cursor Dashboard → Integrations |
 | `PORT` | optional | Harness HTTP/WebSocket port. Default `8787` |
 | `HOST` | optional | Bind address. Default `127.0.0.1`. ECS/Docker sets `0.0.0.0` |
-| `PROVIDER` | optional | Lock Settings → Provider (`mock`, `openai`, `anthropic`, `cursor`). Field is disabled. |
-| `MODEL` | optional | Lock Settings → Model (any model id). Field is disabled. |
-| `FLOOR` | optional | Lock Settings → Floor intelligence (`scripted` or `live`). Field is disabled. Mock still runs Scripted. |
+| `PROVIDER` | optional | Lock Settings → Provider (`mock`, `openai`, `anthropic`, `cursor`). Field is disabled. ECS: `office_provider`. |
+| `MODEL` | optional | Lock Settings → Model (any model id). Field is disabled. ECS: `office_model`. |
+| `FLOOR` | optional | Lock Settings → Floor intelligence (`scripted` or `live`). Field is disabled. ECS: `office_floor`. Mock still runs Scripted. |
 
 Do not commit `.env`. `.gitignore` already excludes it.
 

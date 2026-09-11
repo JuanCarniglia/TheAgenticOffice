@@ -13,6 +13,7 @@ import {
   fetchLockedOptions,
   hasLockedOptions,
   loadSettings,
+  peekLockedOptions,
   saveSettings,
   settingsWithLocks,
   type GameSettings,
@@ -35,6 +36,8 @@ export class SettingsScene extends Phaser.Scene {
 
   create(): void {
     this.settings = loadSettings();
+    this.locks = peekLockedOptions() ?? {};
+    this.settings = settingsWithLocks(this.settings, this.locks);
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(COLORS.bg);
 

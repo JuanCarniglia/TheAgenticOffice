@@ -1,5 +1,5 @@
 import type { ClientMessage, OfficeEvent } from "../../shared/types.js";
-import { officeLog, summarizeEvent } from "../../shared/trace.js";
+import { officeLog, officeLogEvent } from "../../shared/trace.js";
 
 type Handler = (event: OfficeEvent) => void;
 
@@ -57,7 +57,7 @@ export class OfficeClient {
     ws.onmessage = (ev) => {
       try {
         const event = JSON.parse(String(ev.data)) as OfficeEvent;
-        officeLog("ws←", summarizeEvent(event));
+        officeLogEvent("ws←", event);
         for (const handler of this.handlers) handler(event);
       } catch {
         /* ignore malformed */

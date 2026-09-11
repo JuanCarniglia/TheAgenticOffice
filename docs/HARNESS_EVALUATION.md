@@ -54,7 +54,7 @@ Live prompts also prepend `BUSINESS_GUARDRAIL_RULES` (stay in the office, no she
 npm run eval
 ```
 
-`scripts/eval.ts` runs without servers or keys. Last run: **87/87** cases in the file.
+`scripts/eval.ts` runs without servers or keys. Last run: **91/91** cases in the file.
 
 | Bucket | What it proves |
 | --- | --- |
@@ -69,6 +69,7 @@ npm run eval
 | Call privacy | Fire / WHAZUUUP / coffee hold during a live sale; 10:00 standup waits until hangup |
 | Directed voice | Mock `performLine` returns the fallback; live providers perform a cue in character |
 | Idle lock | Wall-clock 3 minutes without player chat (`IDLE_LOCK_MS` / `idleLockDue`) |
+| Quiet logs | `tick` / `clock` are not printed |
 | Env settings pins | `PROVIDER` / `MODEL` / `FLOOR` parse + apply; mock cannot be forced live |
 
 `npm run typecheck` / `npm run build` (`tsc --noEmit`) is the compile gate.
@@ -88,6 +89,7 @@ There is no Playwright suite in-repo. Browser review during build used Cursor’
 | Token budget | `TokenMeterHandler` + Cursor `usage.totalTokens` + char/4 fallback | Tick skips LLM; Live office falls back to Scripted; Michael announces |
 | Live office supervisor | Event only: standup, 3-turn stall, reorder, $100 sale | Never per clock tick; `trace` + WHO’S UP |
 | Idle lock | 3 min wall-clock with no player chat (`office_locked`) | Stamp + title; harness `stop()` so ticks/LLMs stop |
+| Leave office | MENU / last WebSocket close sends `stop` | Clock and Cursor/LLM work halt on the title screen |
 | Provider failure | `start()` catch | Mock takeover |
 | Wanderers | `recallWanderers` | Jim/Dwight/Pam pulled home if they loiter |
 | Sales replies | `cannedSalesReply` from live office state | No conversation cache — repeats re-evaluate qty/stock |
