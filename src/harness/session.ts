@@ -1,27 +1,44 @@
 import type { WebSocket } from "ws";
 import type { ClientMessage, OfficeEvent, SessionConfig } from "../shared/types.js";
-import { DEFAULT_GOAL, SPEED_MS } from "../shared/types.js";
+import {
+  applyLockedOfficeOptions,
+  DEFAULT_GOAL,
+  SPEED_MS,
+  idleLockDue,
+  lockedOfficeOptionsFromEnv,
+  type AgentId,
+} from "../shared/types.js";
 import { isSales, looksLikeHangup } from "../shared/roster.js";
 import { officeLog, summarizeEvent } from "../shared/trace.js";
 import { HUMAN_MAX_CHARS, screenHumanText, tokenBudgetSpent } from "../shared/guardrails.js";
 import { advanceClock, formatClock } from "../shared/clock.js";
-import { emptyState, snapshot, tryCloseSale } from "./officeState.js";
+import { emptyState, isLiveOffice, recordTokens, snapshot, tryCloseSale } from "./officeState.js";
 import { MockEngine } from "./mockEngine.js";
-import { runGraphTick, startGraphSession } from "./graph.js";
+import { resetCallThread, runGraphTick, startGraphSession } from "./graph.js";
 import { startCursorSession, type CursorHandle } from "./cursorEngine.js";
+import { announceTokenCap, queueSupervisor, runSupervisorEvent } from "./supervisor.js";
 import { LongTermMemory, rememberShort } from "./memory.js";
 import {
   applyLogin,
   applyLunch,
-  applyStandup,
   applyWrap,
   dueSchedule,
+  flushHeldStandup,
+  holdOrApplyStandup,
   markFired,
   recallWanderers,
   scriptedMeetingTurn,
 } from "./environment.js";
-import { drainBeat, handlePamCallerReply, hangUpCall, maybeQueueFloorBits, queueInboundCall } from "./beats.js";
-import { cannedSalesReply, deliverSalesLine, rememberSalesReply } from "./salesScript.js";
+import {
+  drainBeat,
+  handlePamCallerReply,
+  hangUpAfterSpokenLine,
+  hangUpCall,
+  maybeQueueFloorBits,
+  queueInboundCall,
+} from "./beats.js";
+import { cannedSalesReply, deliverSalesLine } from "./salesScript.js";
+import { performLine } from "./voice.js";
 
 type GraphHandle = Awaited<ReturnType<typeof startGraphSession>>;
 
@@ -39,6 +56,8 @@ export class OfficeSession {
   private cursor: CursorHandle | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private threadId = "office";
+  private lastPlayAt = Date.now();
+  private locked = false;
 
   attach(ws: WebSocket): void {
     this.clients.add(ws);
@@ -47,6 +66,8 @@ export class OfficeSession {
 
   async handle(message: ClientMessage): Promise<void> {
     officeLog("client", message.type, message);
+    this.lastPlayAt = Date.now();
+    if (this.locked && message.type !== "start") return;
     if (message.type === "start") {
       await this.start(message);
       return;
@@ -67,6 +88,7 @@ export class OfficeSession {
     }
     if (message.type === "hangup") {
       if (hangUpCall(this.state, (e) => this.emit(e))) {
+        if (this.graph) resetCallThread(this.graph);
         setTimeout(() => {
           void this.tick();
         }, 200);
@@ -110,22 +132,27 @@ export class OfficeSession {
         };
         return;
       }
+      const skuBefore = this.state.lastPitchSkuId;
+      const qtyBefore = this.state.lastPitchQty;
       const bye = looksLikeHangup(verdict.text);
       if (this.state.callPhase === "idle") {
         if (bye) return;
         queueInboundCall(this.state, message.to);
       }
       if (this.state.provider === "mock") {
-        this.mock.onCustomerSay(this.state, (e) => this.emit(e), message.to, verdict.text);
+        await this.mock.onCustomerSay(this.state, (e) => this.emit(e), message.to, verdict.text);
       } else if (this.state.callPhase === "pam" || this.state.callPhase === "ringing") {
         const time = formatClock(this.state.clock);
         const line = { from: "you" as const, to: "pam" as const, text: verdict.text, time };
         this.state.customerLog.push(line);
         rememberShort(this.state.shortTerm, "pam", `Caller: ${verdict.text}`, time, "interaction");
         this.emit({ type: "customer_line", ...line });
-        if (bye) hangUpCall(this.state, (e) => this.emit(e), "pam");
+        if (bye) {
+          hangUpCall(this.state, (e) => this.emit(e), "pam");
+          if (this.graph) resetCallThread(this.graph);
+        }
         else if (this.state.callPhase === "pam") {
-          handlePamCallerReply(this.state, (e) => this.emit(e), verdict.text);
+          await handlePamCallerReply(this.state, (e) => this.emit(e), verdict.text);
         }
       } else if (this.state.callPhase !== "live") {
         const time = formatClock(this.state.clock);
@@ -141,19 +168,45 @@ export class OfficeSession {
         this.state.customerLog.push(line);
         rememberShort(this.state.shortTerm, message.to, `Customer: ${verdict.text}`, time, "interaction");
         this.emit({ type: "customer_line", ...line });
+        if (this.state.callClosedSale) return;
         const closed = tryCloseSale(this.state, (e) => this.emit(e), message.to, verdict.text);
-        if (bye) {
+        if (closed) {
+          const spoken = this.state.customerLog.at(-1)?.text ?? "";
+          hangUpAfterSpokenLine(this.state, (e) => this.emit(e), message.to, spoken, () => {
+            if (this.graph) resetCallThread(this.graph);
+          });
+        } else if (bye) {
           hangUpCall(this.state, (e) => this.emit(e), message.to);
-        } else if (!closed) {
+          if (this.graph) resetCallThread(this.graph);
+        } else {
           const canned = cannedSalesReply(this.state, message.to, verdict.text);
           if (canned) {
-            rememberSalesReply(message.to, verdict.text, canned);
-            deliverSalesLine(this.state, (e) => this.emit(e), message.to, canned);
+            const line = await performLine({
+              provider: this.state.provider,
+              model: this.state.model,
+              todayTokens: this.state.todayTokens,
+              agentId: message.to,
+              cue: `On the phone. Keep every price, quantity, and paper name exact. Speak naturally as yourself.\nDraft:\n${canned}`,
+              fallback: canned,
+              max: 180,
+              strictFacts: true,
+              onTokens: (n) => recordTokens(this.state, n, (e) => this.emit(e)),
+            });
+            deliverSalesLine(this.state, (e) => this.emit(e), message.to, line);
           } else {
             this.state.lastCustomerTo = message.to;
             this.state.lastCustomerText = verdict.text;
           }
         }
+      }
+      if (
+        this.state.lastPitchSkuId !== skuBefore ||
+        this.state.lastPitchQty !== qtyBefore
+      ) {
+        void this.rememberRequirement(
+          message.to,
+          `Caller wants ${this.state.lastPitchQty} of ${this.state.lastPitchSkuId}`,
+        );
       }
       setTimeout(() => {
         void this.tick();
@@ -230,12 +283,30 @@ export class OfficeSession {
     void cursor?.close();
   }
 
+  private lockOffice(): void {
+    if (this.locked) return;
+    this.locked = true;
+    this.stop();
+    officeLog("idle", "office locked — no player chat for 3 minutes");
+    this.emit({ type: "office_locked" });
+  }
+
   private async start(config: SessionConfig): Promise<void> {
     this.stop();
+    this.locked = false;
+    this.lastPlayAt = Date.now();
     this.threadId = `office-${Date.now()}`;
-    const goalScreen = screenHumanText(config.goal, { channel: "goal" });
+    const locked = applyLockedOfficeOptions(
+      config,
+      lockedOfficeOptionsFromEnv({
+        PROVIDER: process.env.PROVIDER,
+        MODEL: process.env.MODEL,
+        FLOOR: process.env.FLOOR,
+      }),
+    );
+    const goalScreen = screenHumanText(locked.goal, { channel: "goal" });
     const goal = goalScreen.ok ? goalScreen.text : DEFAULT_GOAL;
-    this.state = emptyState({ ...config, goal });
+    this.state = emptyState({ ...locked, goal });
     await this.memory.load();
     if (!goalScreen.ok) {
       this.emit({
@@ -248,9 +319,9 @@ export class OfficeSession {
     }
 
     try {
-      if (config.provider === "mock") {
+      if (locked.provider === "mock") {
         await this.mock.reset(this.state, (e) => this.emit(e));
-      } else if (config.provider === "cursor") {
+      } else if (locked.provider === "cursor") {
         this.cursor = await startCursorSession(this.state, (e) => this.emit(e), this.memory);
         this.fireDueSchedule();
       } else {
@@ -282,14 +353,23 @@ export class OfficeSession {
     if (!hit) return false;
     markFired(this.state, hit.id);
     if (hit.id === "login") applyLogin(this.state, (e) => this.emit(e));
-    if (hit.id === "standup") applyStandup(this.state, (e) => this.emit(e));
+    if (hit.id === "standup") {
+      if (holdOrApplyStandup(this.state, (e) => this.emit(e))) {
+        queueSupervisor(this.state, "standup");
+      }
+    }
     if (hit.id === "lunch") applyLunch(this.state, (e) => this.emit(e));
     if (hit.id === "wrap") applyWrap(this.state, (e) => this.emit(e));
     return true;
   }
 
   private async tick(): Promise<void> {
+    if (this.locked) return;
     if (this.state.busy) return;
+    if (idleLockDue(this.lastPlayAt)) {
+      this.lockOffice();
+      return;
+    }
     if (this.state.pendingHuman) return;
     this.state.busy = true;
     this.state.tick += 1;
@@ -307,7 +387,11 @@ export class OfficeSession {
     try {
       recallWanderers(this.state, (e) => this.emit(e));
       maybeQueueFloorBits(this.state);
-      if (drainBeat(this.state, (e) => this.emit(e))) {
+      if (await drainBeat(this.state, (e) => this.emit(e))) {
+        return;
+      }
+      if (flushHeldStandup(this.state, (e) => this.emit(e))) {
+        if (isLiveOffice(this.state)) queueSupervisor(this.state, "standup");
         return;
       }
       if (this.state.provider !== "mock" && tokenBudgetSpent(this.state.todayTokens)) {
@@ -317,6 +401,8 @@ export class OfficeSession {
             type: "error",
             message: "Day token budget reached — agents will not take new LLM work.",
           });
+          if (isLiveOffice(this.state)) announceTokenCap(this.state, (e) => this.emit(e));
+          this.state.floor = "scripted";
         }
         return;
       }
@@ -324,7 +410,14 @@ export class OfficeSession {
         await this.mock.tick(this.state, (e) => this.emit(e));
       } else {
         this.fireDueSchedule();
-        if (scriptedMeetingTurn(this.state, (e) => this.emit(e))) {
+        if (isLiveOffice(this.state) && this.state.pendingSupervisor) {
+          await runSupervisorEvent(this.state, this.memory, (e) => this.emit(e));
+          return;
+        }
+        if (isLiveOffice(this.state) && this.state.meeting && this.state.supervisorDone.includes("standup")) {
+          return;
+        }
+        if (!isLiveOffice(this.state) && (await scriptedMeetingTurn(this.state, (e) => this.emit(e)))) {
           return;
         }
         if (this.state.lastCustomerText && this.state.lastCustomerTo) {
@@ -334,10 +427,16 @@ export class OfficeSession {
             await runGraphTick(
               this.graph,
               this.state,
-              `sales-${this.state.tick}-${Date.now()}`,
+              `call-${this.state.tick}`,
               this.memory,
               (e) => this.emit(e),
             );
+          }
+          if (isLiveOffice(this.state)) {
+            this.state.liveTurnsWithoutClose += 1;
+            if (this.state.liveTurnsWithoutClose >= 3) {
+              queueSupervisor(this.state, "stall");
+            }
           }
         }
       }
@@ -346,14 +445,32 @@ export class OfficeSession {
       this.emit({ type: "error", message });
     } finally {
       this.state.busy = false;
+      if (!this.locked && idleLockDue(this.lastPlayAt)) this.lockOffice();
     }
   }
 
   private emit(event: OfficeEvent): void {
     officeLog("event", summarizeEvent(event));
+    if (event.type === "sale") {
+      this.state.liveTurnsWithoutClose = 0;
+      void this.rememberRequirement(
+        event.salesperson,
+        `Sold ${event.qty} ${event.unit} of ${event.label}`,
+      );
+      if (event.revenue >= 100) queueSupervisor(this.state, "sale100");
+    }
+    if (event.type === "reorder_alert") {
+      queueSupervisor(this.state, "reorder", event.skuId);
+    }
     const payload = JSON.stringify(event);
     for (const ws of this.clients) {
       if (ws.readyState === ws.OPEN) ws.send(payload);
     }
+  }
+
+  private async rememberRequirement(agentId: AgentId, text: string): Promise<void> {
+    const time = formatClock(this.state.clock);
+    await this.memory.remember({ agentId, kind: "requirement", text, time });
+    this.emit({ type: "trace", agentId, tool: "remember", summary: text });
   }
 }

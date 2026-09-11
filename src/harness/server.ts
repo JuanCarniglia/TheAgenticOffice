@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage } from "../shared/types.js";
+import { lockedOfficeOptionsFromEnv } from "../shared/types.js";
 import { OfficeSession } from "./session.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -74,7 +75,17 @@ const session = new OfficeSession();
 
 app.use("/*", cors());
 
-app.get("/health", (c) => c.json({ ok: true, service: "agentic-office-harness", game: SERVE_GAME }));
+function envLocks() {
+  return lockedOfficeOptionsFromEnv({
+    PROVIDER: process.env.PROVIDER,
+    MODEL: process.env.MODEL,
+    FLOOR: process.env.FLOOR,
+  });
+}
+
+app.get("/health", (c) =>
+  c.json({ ok: true, service: "agentic-office-harness", game: SERVE_GAME, locks: envLocks() }),
+);
 
 app.get("/session", (c) => c.json(session.snapshot()));
 
@@ -107,4 +118,8 @@ wss.on("connection", (ws: WebSocket) => {
 server.listen(PORT, HOST, () => {
   const game = SERVE_GAME ? " + game" : "";
   console.log(`Harness listening on http://${HOST}:${PORT}${game}`);
+  const locks = envLocks();
+  if (locks.provider || locks.model || locks.floor) {
+    console.log("Office settings locked from .env", locks);
+  }
 });

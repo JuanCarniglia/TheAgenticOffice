@@ -49,6 +49,8 @@ export function summarizeEvent(event: { type: string } & Record<string, unknown>
       return `session_started ${event.clock} $${event.balance}`;
     case "goal_met":
       return "goal_met";
+    case "office_locked":
+      return "office_locked";
     case "tasks_replaced":
       return `tasks_replaced ${(event.tasks as unknown[])?.length ?? 0}`;
     case "queue_update":
@@ -59,6 +61,10 @@ export function summarizeEvent(event: { type: string } & Record<string, unknown>
       return `meeting_end ${event.title}`;
     case "task_update":
       return `task ${JSON.stringify(event.task)}`;
+    case "trace":
+      return `trace ${event.agentId} ${event.tool}: ${event.summary}${
+        typeof event.tokens === "number" ? ` (${event.tokens} tok)` : ""
+      }`;
     default:
       return event.type;
   }

@@ -87,6 +87,7 @@ Independent streams that share `OfficeState` but do not all need an LLM:
 | **Floor beats** | tick, if no meeting and queue empty enough | no | `beats.ts` |
 | **Inbound call** | client `dial` (or first `customer_say` while idle) | no (Pam + hello are scripted) | `queueInboundCall`, `handlePamCallerReply`, `hangUpCall` |
 | **Sales conversation** | `lastCustomerText` on a **live** line after a screened caller line | yes, unless canned cache hits | `salesScript.ts`, `graph.ts`, `cursorEngine.ts` |
+| **Live office supervisor** | standup / 3-turn stall / reorder / $100 sale — Settings Floor = Live | yes, one turn | `supervisor.ts` |
 | **Commerce** | purchase intent or `ring_up` | no | `commerce.ts`, `officeState.applySale` |
 | **Guardrails** | every `customer_say`, `human_reply`, `start.goal` | no | `guardrails.ts` |
 | **Memory persist** | `remember` / mock gossip | no | `memory.ts` |
@@ -97,7 +98,7 @@ Priority inside a tick (early return):
 1. If `pendingHuman` → wait (HQ balloon open)
 2. Drain one **beat** if queued (keeps fire/fax/coffee atomic)
 3. If token cap spent → no new LLM work
-4. Mock engine **or** due schedule / scripted standup / live sales tick
+4. Mock engine **or** due schedule / scripted standup / Live office supervisor event / live sales tick
 
 ## 5. Orchestration
 
@@ -137,7 +138,9 @@ flowchart TD
   Sale -->|qty at reorderAt| Reorder[queueReorderAsk Angela then Pam]
 ```
 
-**Live OpenAI/Anthropic:** one `createReactAgent` per needed reply, named as Jim or Dwight, tools filtered to `pitch_customer`, prompt = persona + slim board + guardrail rules. Thread id is unique per tick (`sales-${tick}-${Date.now()}`) so history does not stack.
+**Scripted floor (default, including Mock):** one `createReactAgent` per novel reply, tools filtered to `pitch_customer`, unique thread per tick.
+
+**Live office (Settings, live providers only):** sales tools = `pitch_customer` + `recall` / `remember` / `dm`. One `MemorySaver` thread per call (`call-{session}-{agent}-{gen}`); hangup bumps gen. Slim board injects `memory.recall`. Michael `createSupervisor` runs only on standup, stall, reorder, or a $100 sale — never on the clock. `trace` events show the last tool.
 
 **Live Cursor:** `Agent.create` in a temp sandbox, `disallowedTools` includes shell/read/edit/grep/web/delete/semSearch/…. Custom tools only. `run.wait()`, record billed tokens (or a char/4 estimate). Agent is disposed after the turn.
 

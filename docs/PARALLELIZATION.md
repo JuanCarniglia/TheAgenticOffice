@@ -52,11 +52,12 @@ Evidence: `src/harness/beats.ts` (`queueInboundCall`, `queueTransferCall`, `queu
 
 | Design | Status | Why |
 | --- | --- | --- |
-| LangGraph `createSupervisor` fanning out Michael/Pam/Jim/Dwight/Angela every tick | **Not shipping** | `@langchain/langgraph-supervisor` remains in `package.json` from v1; `graph.ts` now starts a **single** `createReactAgent` for the salesperson who must answer |
+| LangGraph `createSupervisor` every clock tick | **Not shipping** | That was the token emergency. Live office invokes Michael’s supervisor **only** on standup / stall / reorder / $100 sale |
+| Overlapping sales + supervisor LLM | **Gated** by `state.busy` | One blackboard writer; at most one LLM turn per event |
 | Cursor `task` / subagents | **Disallowed** in `cursorEngine.ts` `BLOCKED_TOOLS` | Office agents must not spawn coding workers |
 | Overlapping LLM calls | **Gated** by `state.busy` | One blackboard writer |
 
-So: **throughput parallelism** is processes + floor streams + multi-sprite beats. **Model parallelism** is capped at one sales reply.
+So: **throughput parallelism** is processes + floor streams + multi-sprite beats. **Model parallelism** is capped at one event turn (sales *or* supervisor).
 
 ## 5. Build-time parallel workstreams
 

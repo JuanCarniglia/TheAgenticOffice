@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import type { AgentId, OfficeEvent, Ticket, WatercoolerPost, ZoneId } from "../../shared/types.js";
 import { AGENT_IDS, isSales, workerById } from "../../shared/roster.js";
 import { zoneWorldPos, worldToNorm, ZONES } from "../layout.js";
-import { loadSettings } from "../settingsStore.js";
+import { loadSettings, peekLockedOptions, settingsWithLocks } from "../settingsStore.js";
 import { beep, phoneHangup, phonePickup, phoneTransfer, ringBell, ringPhone } from "../audio.js";
 import { OfficeClient } from "../net/OfficeClient.js";
 import { Hud } from "../objects/Hud.js";
@@ -39,7 +39,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create(): void {
-    const settings = loadSettings();
+    const settings = settingsWithLocks(loadSettings(), peekLockedOptions() ?? {});
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(0x2a2a2e);
 
@@ -129,6 +129,7 @@ export class OfficeScene extends Phaser.Scene {
       provider: settings.provider,
       model: settings.model,
       speed: settings.speed,
+      floor: settings.floor,
     });
 
     this.chat = new CustomerChat(
@@ -162,7 +163,7 @@ export class OfficeScene extends Phaser.Scene {
 
   private onOfficeEvent(event: OfficeEvent): void {
     officeLog("ui", summarizeEvent(event));
-    const settings = loadSettings();
+    const settings = settingsWithLocks(loadSettings(), peekLockedOptions() ?? {});
     switch (event.type) {
       case "session_started":
         this.hud.setGoal(event.goal);
@@ -258,7 +259,12 @@ export class OfficeScene extends Phaser.Scene {
         break;
       case "books":
         this.hud.setBooks(event.balance, event.todayEarnings);
-        this.menu?.setBooks(event.balance, event.todayEarnings, event.todayTokens);
+        this.menu?.setBooks(event.balance, event.todayEarnings, event.todayTokens, event.lastLiveTokens);
+        break;
+      case "trace":
+        this.menu?.setTrace(event.agentId, event.tool, event.summary, event.tokens);
+        this.hud.setStatus(`TRACE  ${event.agentId.toUpperCase()}  ${event.tool}`, true);
+        this.noteActivity(event.agentId, `${event.tool}: ${event.summary}`);
         break;
       case "stock":
         this.menu?.setStock(event.items);
@@ -326,6 +332,11 @@ export class OfficeScene extends Phaser.Scene {
       case "goal_met":
         this.hud.celebrate();
         beep(settings.sound, 880, 160);
+        break;
+      case "office_locked":
+        this.hud.lockdown();
+        beep(settings.sound, 220, 200);
+        this.time.delayedCall(2600, () => this.goMainMenu());
         break;
       case "tick":
         this.hud.setClock(event.time);

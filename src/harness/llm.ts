@@ -2,8 +2,9 @@ import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { LLMResult } from "@langchain/core/outputs";
-import type { UsageMetadata } from "@langchain/core/messages";
+import type { BaseMessage, UsageMetadata } from "@langchain/core/messages";
 import type { Provider } from "../shared/types.js";
+import { officeLog } from "../shared/trace.js";
 
 export type ChatModel = ChatOpenAI | ChatAnthropic;
 
@@ -36,6 +37,20 @@ export function tokensFromLlmResult(output: LLMResult): number {
   return n;
 }
 
+function previewContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part) return String((part as { text: unknown }).text);
+        return JSON.stringify(part);
+      })
+      .join("");
+  }
+  return JSON.stringify(content ?? "");
+}
+
 export class TokenMeterHandler extends BaseCallbackHandler {
   name = "office_token_meter";
 
@@ -43,9 +58,24 @@ export class TokenMeterHandler extends BaseCallbackHandler {
     super();
   }
 
-  async handleLLMEnd(output: LLMResult): Promise<void> {
+  handleChatModelStart(_llm: unknown, messages: BaseMessage[][]): void {
+    const flat = messages.flat();
+    officeLog("llm-out", `${flat.length} msgs`);
+    for (const msg of flat) {
+      const role = msg._getType?.() ?? msg.constructor?.name ?? "msg";
+      officeLog("llm-out", role, previewContent(msg.content));
+    }
+  }
+
+  handleLLMEnd(output: LLMResult): void {
     const n = tokensFromLlmResult(output);
     if (n > 0) this.onTokens(n);
+    for (const gens of output.generations) {
+      for (const g of gens) {
+        const text = g.text || previewContent((g as { message?: { content?: unknown } }).message?.content);
+        if (text) officeLog("llm-in", text);
+      }
+    }
   }
 }
 

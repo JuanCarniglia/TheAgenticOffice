@@ -13,6 +13,8 @@ export class OfficeMenu {
   private balance = 0;
   private todayEarnings = 0;
   private todayTokens = 0;
+  private lastLiveTokens = 0;
+  private lastTrace = new Map<AgentId, string>();
   private activity = new Map<AgentId, string>();
   private whoId: AgentId = "jim";
   private openKind: PopupKind | null = null;
@@ -61,11 +63,20 @@ export class OfficeMenu {
     if (this.openKind === "stock") this.renderPopup("stock");
   }
 
-  setBooks(balance: number, todayEarnings: number, todayTokens = 0): void {
+  setBooks(balance: number, todayEarnings: number, todayTokens = 0, lastLiveTokens?: number): void {
     this.balance = balance;
     this.todayEarnings = todayEarnings;
     this.todayTokens = todayTokens;
+    if (lastLiveTokens != null) this.lastLiveTokens = lastLiveTokens;
     if (this.openKind === "books") this.renderPopup("books");
+  }
+
+  setTrace(id: AgentId, tool: string, summary: string, tokens?: number): void {
+    this.lastTrace.set(id, `${tool} — ${summary}`);
+    this.setActivity(id, `${tool}: ${summary}`);
+    if (tokens != null) this.lastLiveTokens = tokens;
+    if (this.openKind === "who" && this.whoId === id) this.renderPopup("who");
+    if (tokens != null && this.openKind === "books") this.renderPopup("books");
   }
 
   setActivity(id: AgentId, status: string): void {
@@ -188,6 +199,8 @@ export class OfficeMenu {
       <div style="font-size:16px;color:#444;margin-bottom:12px;">$0.25 per million tokens</div>
       <div style="font-size:22px;color:#000066;">Token spend today</div>
       <div style="font-size:28px;">${formatTokenCost(spend)}</div>
+      <div style="font-size:22px;color:#000066;margin-top:12px;">Last live turn</div>
+      <div style="font-size:22px;">${this.lastLiveTokens ? `${formatTokens(this.lastLiveTokens)} tok` : "(none yet)"}</div>
     `;
   }
 
@@ -205,6 +218,8 @@ export class OfficeMenu {
       <div style="margin-top:10px;background:#fffdf6;border:2px inset #808080;padding:8px;">
         <div style="color:#000066;">${w.name.toUpperCase()} · ${w.role}</div>
         <div id="who-status" style="margin-top:6px;">${escapeHtml(status)}</div>
+        <div style="margin-top:8px;color:#000066;">Last tool</div>
+        <div>${escapeHtml(this.lastTrace.get(this.whoId) || "(none)")}</div>
       </div>
     `;
   }

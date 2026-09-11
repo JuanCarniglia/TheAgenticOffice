@@ -110,7 +110,7 @@ Human: staggering token spend; space random actions; cache prompts/responses.
 
 - LLM **only** for a novel customer reply
 - Standup, straws, opening pitch, thanks, ambient = scripted
-- `cannedSalesReply` + `rememberSalesReply`
+- `cannedSalesReply` (no conversation cache)
 - `formatSlimBoard`
 - Unique thread ids; Cursor agent disposed each turn
 - Day cap 10M tokens
@@ -159,6 +159,18 @@ Human: ship somewhere besides localhost.
 
 **Shipped:** harness serves `dist/` when present (`npm start`); `HOST` bind; Docker + Terraform ECS/Fargate/ALB under `devops/`. S3 is not used — the office is a long-lived WebSocket process. First git commit: **Initial Version**.
 
+### 2026-09-09 — Idle lockdown
+
+Human: if nobody chats for three minutes, lock the office (same stamp language as quarterly review) and return to the title so idle sessions do not burn tokens.
+
+**Shipped:** wall-clock `IDLE_LOCK_MS` (not game minutes). Any player message resets the timer. Harness emits `office_locked`, stops the clock/LLM loop, HUD stamps **OFFICE LOCKED DOWN**, then Intro.
+
+### 2026-09-09 — Env-locked settings
+
+Human: if Provider / Model / Floor intelligence are set in env, they become the default and cannot be changed in the menu.
+
+**Shipped:** harness `.env` `PROVIDER`, `MODEL`, `FLOOR`. `/health` exposes `locks`. Settings disables those fields. Session `start` applies the pins so a client cannot bypass them.
+
 ## Human decisions (index)
 
 | Decision | Owner |
@@ -191,6 +203,7 @@ Human: ship somewhere besides localhost.
 | Inbound call beats (Pam first) instead of straw-draw pitch | Agent |
 | Goal stamp after celebration, not on first “ok” | Agent |
 | Fallback to mock on provider start failure | Agent |
+| Live office = event graph, not per-tick swarm | Agent |
 
 ## Failures that taught the design
 
@@ -203,4 +216,4 @@ Human: ship somewhere besides localhost.
 
 ## What “done” means now
 
-The office is a playable demo (local two-process, or one container on ECS): inbound phone sale, mock or live sales voice, real warehouse math, visible multi-agent floor, bounded spend. It is not a swarm of five always-on coding agents — that was the v1 drawing, and the log above is why it is not the shipping loop.
+The office is a playable demo (local two-process, or one container on ECS): inbound phone sale, mock or live sales voice, real warehouse math, visible multi-agent floor, bounded spend. Settings **Live office** turns unused tools, keyword memory, and Michael’s supervisor on — still **event-triggered**, never five LLMs every tick. That is the correction to supervisor-every-tick, not a return to it.

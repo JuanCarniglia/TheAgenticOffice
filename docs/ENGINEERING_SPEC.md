@@ -16,7 +16,7 @@ The Agentic Office is a Phaser 3 vintage office in the browser plus a Node harne
 | P6 | HQ can still be asked a question via balloon (`ask_human`); the graph pauses that channel until a short reply. |
 | P7 | Commerce is real: 20 SKUs from `stock_definitions.md`, cash balance, daily earnings, token spend on the books. |
 | P8 | Mock mode is first-class. The office must run with **no API keys**. |
-| P9 | Live providers (OpenAI, Anthropic, Cursor) are pluggable behind the same event protocol. |
+| P9 | Live providers (OpenAI, Anthropic, Cursor) are pluggable behind the same event protocol. Settings **Floor intelligence** is Scripted (default) or Live office (event graph). Mock is always Scripted. |
 | P10 | Human asks stay inside the paper business (phone small talk is fine): no shells, no web, no jailbreaks, no token dumps. |
 
 ### 1.2 Non-goals (v1)
@@ -72,9 +72,12 @@ Simulation is **not** frame-tied. Phaser runs at display refresh; the harness ti
 | Day token cap | 10,000,000 (~$2.5 at $0.25 / 1M) | Hard stop on LLM spend |
 | Speech balloon | ~110 chars on the floor, 140 in chat | Vintage UI, readable overlay |
 | Sales LLM | **Only** on a novel customer reply | Idle ticks used to burn a full office prompt every 2.2s |
+| Live office LLM | Event only (sales, standup, stall, reorder, $100 sale) | Supervisor-every-tick was the token emergency |
+| Idle lockdown | 3 min wall-clock with no player chat | Stops ticks/LLMs; stamp + title |
 | Cursor tools | `mcp` + custom office tools; shell/read/edit/web **disallowed** | Agents must not leave the paper office |
 | Cursor cwd | OS temp dir, sandboxed | Must not edit this repo |
 | API keys | Harness `.env` only | Settings copy: “API keys stay in the harness .env — never in the browser.” |
+| Settings pins | Optional `PROVIDER` / `MODEL` / `FLOOR` in harness `.env` | Menu shows the value and disables the control; harness applies the pin on `start` |
 | Restock cost | 20% of list × units to fill the cage | Warehouse is not free |
 | Restock delay | 36 ticks after Angela asks Pam | So STOCK actually drops after a sale |
 | Clock | 1 sim-minute per tick, Mon 09:00–17:00 | Real-time enough to play as the caller |
@@ -85,7 +88,7 @@ A build is acceptable when all of the following hold.
 
 ### 4.1 Game loop
 
-- [x] Intro boots, Settings persist provider/goal/speed/sound, Office loads the floorplan.
+- [x] Intro boots, Settings persist provider/goal/speed/sound/floor, Office loads the floorplan. Optional `.env` `PROVIDER` / `MODEL` / `FLOOR` lock those three fields.
 - [x] Five color-coded workers sit on calibrated zone anchors (Jim/Dwight at desks, Pam left of reception).
 - [x] Camera pan/zoom; MENU returns to title (ESC does not quit).
 - [x] Call window is small, draggable, minimizable; Jim/Dwight dial buttons and HANG UP.
@@ -95,8 +98,11 @@ A build is acceptable when all of the following hold.
 
 - [x] 09:00 LOG IN, 10:00 standup in conference, 12:00 lunch, 17:00 wrap — without a human click.
 - [x] Inbound dial: ring → Pam pickup + greeting → transfer → Jim or Dwight hello. Caller chooses the desk.
-- [x] Purchase only after a quote (`dealIsQuoted`); “I’ll take them” / yes-after-quote rings up stock and cash; tickets move. A new spec updates the pitch instead of closing the old SKU.
+- [x] Purchase only after a quote (`openQuote` on this call); “I’ll take them” / yes-after-quote rings up stock and cash; tickets move. A new spec updates the pitch instead of closing the old SKU. A successful sale thanks the caller; hangup waits until that line has finished typing in chat; leftover chat cannot re-ring that ticket.
 - [x] $100+ sale rings Pam’s bell; Michael congratulates the closer.
+- [x] Ambient bits and 10:00 standup wait while a sales call is live (Jim/Dwight stay on the line).
+- [x] Live-provider speech is directed (cue + fallback), not a recited script. Mock uses the fallback line.
+- [x] Three minutes of no player chat locks the office (stamp + title) and stops the harness clock so idle sessions do not burn tokens.
 - [x] Reorder min → Angela walks to Pam → mill truck later → cage back to `startQty`, balance charged 20%.
 - [x] Ambient bits (fire, fax, cats, coffee, boom) fire on their own and do not yank people home mid-scene.
 
@@ -105,7 +111,7 @@ A build is acceptable when all of the following hold.
 - [x] Mock completes a sale with no keys.
 - [x] Live providers fall back to mock if start fails (missing key, Cursor error).
 - [x] Guardrails refuse commands, URLs, off-topic, oversize, and post-cap asks; Jim/Dwight answer in character.
-- [x] `npm run eval` passes (41 cases: guardrails, commerce, quote-gated yes, hangup, recycled spec, goals, canned-reply cache).
+- [x] `npm run eval` passes (guardrails, commerce, quote-gated yes, sale hangup, no double-close, floor hold, recycled spec, goals).
 - [x] `npm run build` typechecks.
 
 ### 4.4 Playable goals
@@ -136,9 +142,9 @@ A build is acceptable when all of the following hold.
 
 Canonical types live in `src/shared/types.ts`.
 
-**Client → harness:** `start`, `customer_say`, `human_reply`, `dial`, `hangup`, `set_speed`.
+**Client → harness:** `start` (includes optional `floor`), `customer_say`, `human_reply`, `dial`, `hangup`, `set_speed`.
 
-**Harness → game:** `session_started`, `tick`/`clock`, `say`/`whisper`/`watercooler`/`dm`, `meeting_*`, `customer_line`, `ask_human`, `move_to`, `task_update`/`queue_update`, `books`/`stock`/`sale`/`reorder_*`, `bell`, `phone` (`ring`/`pickup`/`transfer`/`hangup`), `fire`, `goal_met`, `guardrail`, `error`.
+**Harness → game:** `session_started`, `tick`/`clock`, `say`/`whisper`/`watercooler`/`dm`, `meeting_*`, `customer_line`, `ask_human`, `move_to`, `task_update`/`queue_update`, `books`/`stock`/`sale`/`reorder_*`, `bell`, `phone` (`ring`/`pickup`/`transfer`/`hangup`), `fire`, `goal_met`, `office_locked`, `guardrail`, `error`, `trace`.
 
 Call state on the blackboard: `callPhase` `idle` → `ringing` → `pam` → `live`. `pitch_customer` is refused unless the line is `live`.
 

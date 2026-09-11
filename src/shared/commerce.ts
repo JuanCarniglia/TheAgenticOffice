@@ -1,5 +1,6 @@
 import type { StockSku } from "./catalog.js";
 import { skuLabel } from "./catalog.js";
+import { looksLikeAllStock } from "./roster.js";
 
 export function findSku(stock: StockSku[], id: string): StockSku | undefined {
   return stock.find((s) => s.id === id);
@@ -53,7 +54,7 @@ export function matchSkuFromText(stock: StockSku[], text: string): StockSku | un
     .map((s) => {
       let score = familyBonus(t, s);
       if (t.includes(s.article.toLowerCase())) score += 3;
-      if (t.includes(String(s.gsm))) score += 2;
+      if (new RegExp(`\\b${s.gsm}\\s*(gsm|g/?m²|g/?m2)\\b`, "i").test(t)) score += 2;
       if (t.includes(s.size.toLowerCase())) score += 2;
       if (wantSize === s.size) score += 2;
       if (wantSize && wantSize !== s.size) score -= 4;
@@ -86,7 +87,8 @@ export function interpretPaperAsk(
   return { sku, qty, note };
 }
 
-export function qtyFromText(text: string, fallback: number): number {
+export function qtyFromText(text: string, fallback: number, onHand?: number): number {
+  if (onHand != null && looksLikeAllStock(text)) return Math.max(1, Math.min(onHand, 200));
   const withUnit = text.match(/\b(\d{1,3})\s*(reams?|packs?|units?)\b/i);
   if (withUnit) {
     const n = Number(withUnit[1]);

@@ -50,7 +50,7 @@ export class Hud {
         <div class="hud-status">
           <div id="hud-status">OFFICE NETWORK: CONNECTING…</div>
         </div>
-        <div id="hud-stamp" hidden>QUARTERLY<br />REVIEW</div>
+        <div id="hud-stamp" hidden></div>
       </div>
     `;
     game.appendChild(host);
@@ -151,18 +151,27 @@ export class Hud {
   }
 
   celebrate(): void {
+    this.stamp("QUARTERLY<br />REVIEW", `${this.lastClock}  CLOSE STAMPED — QUARTERLY REVIEW`);
+  }
+
+  lockdown(): void {
+    this.stamp("OFFICE<br />LOCKED DOWN", `${this.lastClock}  NOBODY ON THE LINE — OFFICE LOCKED`);
+  }
+
+  stamp(html: string, status: string, hideMs = 2600): void {
     if (!this.stampEl) return;
+    this.stampEl.innerHTML = html;
     this.stampEl.hidden = false;
     this.stampEl.classList.remove("hud-stamp-play");
     void this.stampEl.offsetWidth;
     this.stampEl.classList.add("hud-stamp-play");
-    this.setStatus(`${this.lastClock}  CLOSE STAMPED — QUARTERLY REVIEW`);
+    this.setStatus(status);
     window.setTimeout(() => {
       if (this.stampEl) {
         this.stampEl.hidden = true;
         this.stampEl.classList.remove("hud-stamp-play");
       }
-    }, 2600);
+    }, hideMs);
   }
 
   private syncToCanvas(): void {

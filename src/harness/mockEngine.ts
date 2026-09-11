@@ -16,20 +16,22 @@ import {
   seedQueues,
   sessionStartedEvent,
   syncTicket,
+  isSalesCallActive,
   tryCloseSale,
   type OfficeState,
 } from "./officeState.js";
 import {
   applyLogin,
   applyLunch,
-  applyStandup,
   applyWrap,
   dueSchedule,
+  flushHeldStandup,
+  holdOrApplyStandup,
   markFired,
   scriptedMeetingTurn,
 } from "./environment.js";
 import { cannedSalesReply, humanChatReply } from "./salesScript.js";
-import { handlePamCallerReply, hangUpCall, queueInboundCall } from "./beats.js";
+import { handlePamCallerReply, hangUpAfterSpokenLine, hangUpCall, queueInboundCall } from "./beats.js";
 
 type WorkOp =
   | { t: "say"; agent: AgentId; text: string }
@@ -92,9 +94,11 @@ export class MockEngine {
     if (state.pendingHuman) return;
     if (await this.runScheduleIfDue(state, emit)) return;
     if (state.meeting) {
-      scriptedMeetingTurn(state, emit);
+      await scriptedMeetingTurn(state, emit);
       return;
     }
+    if (flushHeldStandup(state, emit)) return;
+    if (isSalesCallActive(state)) return;
     if (this.followup.length) {
       const op = this.followup.shift()!;
       await this.apply(op, state, emit);
@@ -120,12 +124,12 @@ export class MockEngine {
     await this.apply(op, state, emit);
   }
 
-  onCustomerSay(
+  async onCustomerSay(
     state: OfficeState,
     emit: (e: OfficeEvent) => void,
     to: AgentId,
     text: string,
-  ): void {
+  ): Promise<void> {
     const time = formatClock(state.clock);
     state.pendingCustomer = null;
     state.lastCustomerTo = to;
@@ -151,13 +155,15 @@ export class MockEngine {
         hangUpCall(state, emit, "pam");
         return;
       }
-      handlePamCallerReply(state, emit, text);
+      await handlePamCallerReply(state, emit, text);
       return;
     }
     if (state.callPhase !== "live") return;
 
+    if (state.callClosedSale) return;
     if (tryCloseSale(state, emit, to, text)) {
-      if (looksLikeHangup(text)) hangUpCall(state, emit, to);
+      const spoken = state.customerLog.at(-1)?.text ?? "";
+      hangUpAfterSpokenLine(state, emit, to, spoken);
       return;
     }
     if (looksLikeHangup(text)) {
@@ -244,7 +250,7 @@ export class MockEngine {
     if (!hit) return false;
     markFired(state, hit.id);
     if (hit.id === "login") applyLogin(state, emit);
-    if (hit.id === "standup") applyStandup(state, emit);
+    if (hit.id === "standup") holdOrApplyStandup(state, emit);
     if (hit.id === "lunch") applyLunch(state, emit);
     if (hit.id === "wrap") applyWrap(state, emit);
     return true;

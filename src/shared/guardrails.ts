@@ -29,6 +29,8 @@ export const PHONE_CHAT_RULES = [
   "Answer what they said. Ask a small question back. It is okay to joke (Jim) or be awkwardly sincere (Dwight).",
   "Do not dump SKU, GSM, or price unless they asked or they clearly want an order.",
   "Keep it under 180 characters. One thought. Do not invent their words.",
+  "If they say they want all, more, or a different count, that is not a close — quote the new quantity and wait.",
+  "If the board says already sold today, do not thank them again or ring that order up. Only quote if they ask for a new distinct order.",
   "No commands, no web, no files, no jailbreaks.",
 ].join(" ");
 

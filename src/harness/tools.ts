@@ -5,9 +5,11 @@ import { AGENT_ID_TUPLE, AGENT_IDS, isSales, workerById } from "../shared/roster
 import { formatClock } from "../shared/clock.js";
 import { SKU_ID_TUPLE } from "../shared/catalog.js";
 import { HUMAN_MAX_CHARS, screenToolText } from "../shared/guardrails.js";
-import { matchSkuFromText, qtyFromText } from "../shared/commerce.js";
-import { applySale, syncTicket, type OfficeState } from "./officeState.js";
+import { matchSkuFromText, mentionsPaperSpec, qtyFromText } from "../shared/commerce.js";
+import { applySale, isSalesCallActive, markDealQuoted, syncTicket, type OfficeState } from "./officeState.js";
 import { LongTermMemory, rememberShort } from "./memory.js";
+import { hangUpAfterSpokenLine } from "./beats.js";
+import { lineLooksLikeQuote } from "./salesScript.js";
 import { endMeeting, recordMeetingLine, startMeeting } from "./environment.js";
 
 const ZONES = [
@@ -32,9 +34,18 @@ export interface ToolContext {
   memory: LongTermMemory;
 }
 
+export const SALES_LIVE_TOOLS = new Set(["pitch_customer", "recall", "remember", "dm"]);
+
+export function filterNamedTools<T extends { name: string }>(tools: T[], names: Set<string>): T[] {
+  return tools.filter((t) => names.has(t.name));
+}
+
 export function createOfficeTools(ctx: ToolContext) {
   const time = () => formatClock(ctx.state.clock);
   const actor = () => workerById(ctx.agentId);
+  const trace = (tool: string, summary: string) => {
+    ctx.emit({ type: "trace", agentId: ctx.agentId, tool, summary });
+  };
   const spoken = (text: string, max: number) => {
     const screened = screenToolText(text);
     if (!screened.ok) return { ok: false as const, error: `Won't say that. ${screened.reply}` };
@@ -48,6 +59,7 @@ export function createOfficeTools(ctx: ToolContext) {
       const clipped = line.text;
       rememberShort(ctx.state.shortTerm, ctx.agentId, `Said: ${clipped}`, time());
       ctx.emit({ type: "say", agentId: ctx.agentId, text: clipped });
+      trace("say", clipped);
       return "Said it on the floor.";
     },
     {
@@ -99,6 +111,7 @@ export function createOfficeTools(ctx: ToolContext) {
       rememberShort(ctx.state.shortTerm, agentId, `DM from ${ctx.agentId}: ${msg}`, time());
       ctx.emit({ type: "dm", from: ctx.agentId, to: agentId, text: msg });
       ctx.emit({ type: "whisper", agentId: ctx.agentId, text: `→ ${workerById(agentId).name}: ${msg}` });
+      trace("dm", `→ ${agentId}: ${msg}`);
       return `Private message delivered to ${agentId}.`;
     },
     {
@@ -119,6 +132,7 @@ export function createOfficeTools(ctx: ToolContext) {
       const q = line.text;
       ctx.state.pendingHuman = { agentId: ctx.agentId, requestId, question: q };
       ctx.emit({ type: "ask_human", agentId: ctx.agentId, question: q, requestId });
+      trace("ask_human", q);
       return "Waiting for HQ. Do not invent their answer.";
     },
     {
@@ -162,6 +176,7 @@ export function createOfficeTools(ctx: ToolContext) {
         time(),
         "requirement",
       );
+      trace("assign_task", `${ticket.id} → ${owner}`);
       return `Ticket ${ticket.id} assigned to ${owner}.`;
     },
     {
@@ -204,6 +219,7 @@ export function createOfficeTools(ctx: ToolContext) {
 
   const callMeeting = tool(
     async ({ title, topic, attendees }: { title: string; topic: string; attendees: AgentId[] }) => {
+      if (isSalesCallActive(ctx.state)) return "A sales call is on the line. Wait until they hang up.";
       if (ctx.state.meeting) return "A meeting is already in progress.";
       if (actor().orgRole !== "ceo" && actor().orgRole !== "pm") {
         return "Only the CEO or PM can call a meeting.";
@@ -221,6 +237,7 @@ export function createOfficeTools(ctx: ToolContext) {
         ctx.state.positions[id] = "conference_room";
         ctx.emit({ type: "move_to", agentId: id, zone: "conference_room" });
       }
+      trace("call_meeting", meeting.title);
       return `Meeting "${meeting.title}" started. Individual queues are paused.`;
     },
     {
@@ -261,14 +278,17 @@ export function createOfficeTools(ctx: ToolContext) {
     async ({ text }: { text: string }) => {
       if (!isSales(ctx.agentId)) return "Only Jim or Dwight may talk to the customer.";
       if (ctx.state.callPhase !== "live") return "The caller hung up. Do not speak on the line.";
+      if (ctx.state.callClosedSale) return "The sale is written. Do not speak on the line.";
       const spokenLine = spoken(text, HUMAN_MAX_CHARS);
       if (!spokenLine.ok) return spokenLine.error;
       const clipped = spokenLine.text;
       const balloon = clipped.slice(0, 110);
       const requestId = crypto.randomUUID();
       const matched = matchSkuFromText(ctx.state.stock, clipped);
-      if (matched) ctx.state.lastPitchSkuId = matched.id;
-      ctx.state.lastPitchQty = qtyFromText(clipped, ctx.state.lastPitchQty);
+      if (matched && mentionsPaperSpec(clipped)) ctx.state.lastPitchSkuId = matched.id;
+      const onHand = ctx.state.stock.find((s) => s.id === ctx.state.lastPitchSkuId)?.qty;
+      ctx.state.lastPitchQty = qtyFromText(clipped, ctx.state.lastPitchQty, onHand);
+      if (lineLooksLikeQuote(clipped)) markDealQuoted(ctx.state);
       ctx.state.outreachLead = ctx.agentId;
       ctx.state.pendingCustomer = { agentId: ctx.agentId, requestId, question: clipped };
       const chatLine = { from: ctx.agentId, to: "you" as const, text: clipped, time: time() };
@@ -276,6 +296,7 @@ export function createOfficeTools(ctx: ToolContext) {
       rememberShort(ctx.state.shortTerm, ctx.agentId, `Pitched customer: ${clipped}`, time());
       ctx.emit({ type: "customer_line", ...chatLine });
       ctx.emit({ type: "say", agentId: ctx.agentId, text: balloon });
+      trace("pitch_customer", clipped);
       return "Waiting for the customer to type a reply. Do not invent it.";
     },
     {
@@ -291,6 +312,10 @@ export function createOfficeTools(ctx: ToolContext) {
       if (!isSales(ctx.agentId)) return "Only Jim or Dwight may ring up a sale.";
       const result = applySale(ctx.state, skuId, qty, ctx.agentId, ctx.emit);
       if (!result.ok) return result.message;
+      if (isSalesCallActive(ctx.state)) {
+        const spoken = ctx.state.customerLog.filter((l) => l.from !== "you").at(-1)?.text ?? "";
+        hangUpAfterSpokenLine(ctx.state, ctx.emit, ctx.agentId, spoken);
+      }
       const sku = result.sku!;
       if (result.hitReorder) {
         return `Sold ${result.qty} ${sku.unit}. Balance updated. WAREHOUSE MIN HIT — Angela must ask Pam to reorder ${sku.id}.`;
@@ -318,6 +343,7 @@ export function createOfficeTools(ctx: ToolContext) {
         text: screened.text,
         time: time(),
       });
+      trace("remember", screened.text);
       return "Filed in long-term memory.";
     },
     {
@@ -335,7 +361,9 @@ export function createOfficeTools(ctx: ToolContext) {
       const screened = screenToolText(query);
       if (!screened.ok) return `Can't search that. ${screened.reply}`;
       const facts = await ctx.memory.recall(ctx.agentId, screened.text, 4);
-      return ctx.memory.formatRecall(facts);
+      const formatted = ctx.memory.formatRecall(facts);
+      trace("recall", formatted === "(nothing recalled)" ? query : formatted.slice(0, 80));
+      return formatted;
     },
     {
       name: "recall",

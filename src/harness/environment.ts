@@ -2,8 +2,9 @@ import type { AgentId, Meeting, OfficeEvent, Ticket, ZoneId } from "../shared/ty
 import { AGENT_IDS, workerById } from "../shared/roster.js";
 import { clockKey, formatClock } from "../shared/clock.js";
 import { rememberShort } from "./memory.js";
-import { defaultBoard, seedQueues, type OfficeState } from "./officeState.js";
-import { STANDUP_LINES } from "./salesScript.js";
+import { defaultBoard, isSalesCallActive, recordTokens, seedQueues, type OfficeState } from "./officeState.js";
+import { STANDUP_CUES, STANDUP_LINES } from "./salesScript.js";
+import { performLine } from "./voice.js";
 
 export interface ScheduleHit {
   id: string;
@@ -89,6 +90,23 @@ export function applyLogin(state: OfficeState, emit: (e: OfficeEvent) => void): 
   }
 }
 
+/** Hold 10:00 standup until the sales call ends. Caller must already `markFired`. */
+export function holdOrApplyStandup(state: OfficeState, emit: (e: OfficeEvent) => void): boolean {
+  if (isSalesCallActive(state)) {
+    state.standupHeld = true;
+    return false;
+  }
+  applyStandup(state, emit);
+  return true;
+}
+
+export function flushHeldStandup(state: OfficeState, emit: (e: OfficeEvent) => void): boolean {
+  if (!state.standupHeld || isSalesCallActive(state) || state.meeting) return false;
+  state.standupHeld = false;
+  applyStandup(state, emit);
+  return true;
+}
+
 export function applyStandup(state: OfficeState, emit: (e: OfficeEvent) => void): void {
   const meeting = startMeeting(state, "Standup", "Sell the inbound caller.", [...AGENT_IDS], AGENT_IDS.length);
   emit({ type: "clock", time: formatClock(state.clock), label: "DAILY STANDUP" });
@@ -118,7 +136,7 @@ export function applyWrap(state: OfficeState, emit: (e: OfficeEvent) => void): v
   }
 }
 
-export function scriptedMeetingTurn(state: OfficeState, emit: (e: OfficeEvent) => void): boolean {
+export async function scriptedMeetingTurn(state: OfficeState, emit: (e: OfficeEvent) => void): Promise<boolean> {
   if (!state.meeting) return false;
   if (state.meeting.remainingTurns <= 0) {
     const done = endMeeting(state);
@@ -133,7 +151,15 @@ export function scriptedMeetingTurn(state: OfficeState, emit: (e: OfficeEvent) =
     sendHome(state, emit);
     return true;
   }
-  const line = STANDUP_LINES[speaker];
+  const line = await performLine({
+    provider: state.provider,
+    model: state.model,
+    todayTokens: state.todayTokens,
+    agentId: speaker,
+    cue: STANDUP_CUES[speaker],
+    fallback: STANDUP_LINES[speaker],
+    onTokens: (n) => recordTokens(state, n, emit),
+  });
   recordMeetingLine(state, speaker, line);
   rememberShort(state.shortTerm, speaker, `Standup: ${line}`, formatClock(state.clock));
   emit({ type: "meeting_say", agentId: speaker, text: line });

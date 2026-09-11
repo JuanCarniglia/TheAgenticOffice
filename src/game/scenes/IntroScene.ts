@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { bootBeep } from "../audio.js";
-import { loadSettings } from "../settingsStore.js";
+import { fetchLockedOptions, loadSettings } from "../settingsStore.js";
 import { COLORS, FONT_BODY, FONT_PIXEL } from "../style.js";
 
 export class IntroScene extends Phaser.Scene {
@@ -9,6 +9,7 @@ export class IntroScene extends Phaser.Scene {
   }
 
   create(): void {
+    void fetchLockedOptions();
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(COLORS.bg);
 

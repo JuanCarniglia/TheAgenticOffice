@@ -25,6 +25,9 @@ export type TaskStatus = "todo" | "doing" | "done";
 
 export type SimSpeed = "slow" | "normal" | "fast";
 
+/** Scripted = today’s beats. Live = event-triggered multi-agent graph (never Mock). */
+export type FloorMode = "scripted" | "live";
+
 export type MemoryKind = "interaction" | "requirement" | "gossip" | "decision";
 
 export interface OfficeClock {
@@ -89,6 +92,69 @@ export interface SessionConfig {
   provider: Provider;
   model: string;
   speed: SimSpeed;
+  floor?: FloorMode;
+}
+
+export function resolveFloor(provider: Provider, floor?: FloorMode): FloorMode {
+  if (provider === "mock") return "scripted";
+  return floor === "live" ? "live" : "scripted";
+}
+
+export const DEFAULT_MODELS: Record<Provider, string> = {
+  mock: "scripted-office",
+  openai: "gpt-4o-mini",
+  anthropic: "claude-sonnet-4-0",
+  cursor: "composer-2.5",
+};
+
+/** Fields pinned by harness env (`PROVIDER`, `MODEL`, `FLOOR`). Unset keys stay player-chosen. */
+export interface LockedOfficeOptions {
+  provider?: Provider;
+  model?: string;
+  floor?: FloorMode;
+}
+
+export function parseProvider(raw: string | undefined | null): Provider | undefined {
+  const value = raw?.trim().toLowerCase();
+  if (value === "openai" || value === "anthropic" || value === "cursor" || value === "mock") return value;
+  return undefined;
+}
+
+export function parseFloorMode(raw: string | undefined | null): FloorMode | undefined {
+  const value = raw?.trim().toLowerCase();
+  if (value === "scripted" || value === "live") return value;
+  return undefined;
+}
+
+export function parseModel(raw: string | undefined | null): string | undefined {
+  const value = raw?.trim();
+  return value || undefined;
+}
+
+export function lockedOfficeOptionsFromEnv(
+  env: Record<string, string | undefined>,
+): LockedOfficeOptions {
+  const provider = parseProvider(env.PROVIDER);
+  const model = parseModel(env.MODEL);
+  const floor = parseFloorMode(env.FLOOR);
+  return {
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+    ...(floor ? { floor } : {}),
+  };
+}
+
+export function applyLockedOfficeOptions<T extends { provider: Provider; model: string; floor?: FloorMode }>(
+  config: T,
+  locks: LockedOfficeOptions,
+): T {
+  const provider = locks.provider ?? config.provider;
+  let model = locks.model ?? config.model;
+  if (locks.provider && !locks.model) {
+    const known = Object.values(DEFAULT_MODELS);
+    if (!model || known.includes(model)) model = DEFAULT_MODELS[provider];
+  }
+  return { ...config, provider, model, floor: resolveFloor(provider, locks.floor ?? config.floor) };
 }
 
 export type OfficeEvent =
@@ -119,7 +185,7 @@ export type OfficeEvent =
   | { type: "tasks_replaced"; tasks: Ticket[] }
   | { type: "queue_update"; agentId: AgentId; queue: Ticket[] }
   | { type: "status"; agentId: AgentId; status: string }
-  | { type: "books"; balance: number; todayEarnings: number; todayTokens: number }
+  | { type: "books"; balance: number; todayEarnings: number; todayTokens: number; lastLiveTokens?: number }
   | { type: "stock"; items: StockSku[] }
   | {
       type: "sale";
@@ -136,8 +202,10 @@ export type OfficeEvent =
   | { type: "phone"; kind: "ring" | "pickup" | "transfer" | "hangup" }
   | { type: "fire"; zone: ZoneId; on: boolean }
   | { type: "goal_met" }
+  | { type: "office_locked" }
   | { type: "tick"; n: number; time: string }
   | { type: "error"; message: string }
+  | { type: "trace"; agentId: AgentId; tool: string; summary: string; tokens?: number }
   | {
       type: "guardrail";
       channel: "customer" | "hq" | "goal";
@@ -147,12 +215,19 @@ export type OfficeEvent =
     };
 
 export type ClientMessage =
-  | { type: "start"; goal: string; provider: Provider; model: string; speed: SimSpeed }
+  | { type: "start"; goal: string; provider: Provider; model: string; speed: SimSpeed; floor?: FloorMode }
   | { type: "human_reply"; agentId: AgentId; requestId: string; text: string }
   | { type: "customer_say"; to: AgentId; text: string }
   | { type: "dial"; to: AgentId }
   | { type: "hangup" }
   | { type: "set_speed"; speed: SimSpeed };
+
+/** Wall-clock idle before the office locks and returns to the title (no player chat). */
+export const IDLE_LOCK_MS = 3 * 60 * 1000;
+
+export function idleLockDue(lastPlayAt: number, now = Date.now()): boolean {
+  return now - lastPlayAt >= IDLE_LOCK_MS;
+}
 
 export const SPEED_MS: Record<SimSpeed, number> = {
   slow: 5000,

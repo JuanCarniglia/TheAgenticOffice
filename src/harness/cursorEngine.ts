@@ -12,15 +12,15 @@ import {
   defaultBoard,
   emitBooks,
   formatSlimBoard,
+  isLiveOffice,
   recordTokens,
   seedQueues,
   sessionStartedEvent,
   type OfficeState,
 } from "./officeState.js";
-import { createOfficeTools } from "./tools.js";
+import { createOfficeTools, filterNamedTools, SALES_LIVE_TOOLS } from "./tools.js";
 import { LongTermMemory } from "./memory.js";
 import { officeLog } from "../shared/trace.js";
-import { rememberSalesReply } from "./salesScript.js";
 
 const SCRATCH = join(tmpdir(), "the-agentic-office-cursor");
 const OFFICE_ONLY_TOOLS: ToolName[] = ["mcp"];
@@ -67,9 +67,10 @@ function salesTools(
 ) {
   const customTools: Record<string, SDKCustomTool> = {};
   const worker = workerById(agentId);
-  const tools = createOfficeTools({ state, emit, agentId, memory }).filter(
-    (t) => t.name === "pitch_customer",
-  );
+  const all = createOfficeTools({ state, emit, agentId, memory });
+  const tools = isLiveOffice(state)
+    ? filterNamedTools(all, SALES_LIVE_TOOLS)
+    : all.filter((t) => t.name === "pitch_customer");
   for (const t of tools) {
     const name = `${agentId}_${t.name}`;
     const invoke = t.invoke.bind(t) as (args: Record<string, unknown>) => Promise<unknown>;
@@ -88,15 +89,21 @@ function salesTools(
   return customTools;
 }
 
-function salesReplyPrompt(state: OfficeState): string {
+function salesReplyPrompt(state: OfficeState, board: string): string {
   const to = state.lastCustomerTo ?? "jim";
   const name = workerById(to).name;
+  const live = isLiveOffice(state);
   return [
     `You are ${name} at a paper company, on a phone call.`,
     `Call ${to}_pitch_customer once with a NEW line under 180 characters.`,
+    live
+      ? `You may also call ${to}_recall, ${to}_remember, or ${to}_dm (Angela for price, Dwight for GSM) before the pitch.`
+      : "",
     PHONE_CHAT_RULES,
-    formatSlimBoard(state),
-  ].join("\n\n");
+    board,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export async function startCursorSession(
@@ -136,8 +143,10 @@ export async function startCursorSession(
       const asked = state.lastCustomerText;
       if (!to || !asked) return;
       const customTools = salesTools(state, emit, memory, to);
-      const prompt = salesReplyPrompt(state);
-      officeLog("cursor", "sales-reply", to);
+      const facts = await memory.recall(to, asked, 3);
+      const prompt = salesReplyPrompt(state, formatSlimBoard(state, memory.formatRecall(facts)));
+      officeLog("llm-out", `cursor ${to} asked: ${asked}`);
+      officeLog("llm-out", "prompt\n" + prompt);
       try {
         await dispose();
         agent = await Agent.create({
@@ -149,19 +158,28 @@ export async function startCursorSession(
           local: {
             cwd: SCRATCH,
             settingSources: [],
-            sandboxOptions: { enabled: true },
+            // Local OS sandbox is not supported in this environment (macOS / no seatbelt).
+            sandboxOptions: { enabled: false },
             customTools,
           },
         });
         const run = await agent.send(prompt, { local: { customTools } });
         const result = await run.wait();
         const reply = state.pendingCustomer?.question ?? "";
-        if (reply) rememberSalesReply(to, asked, reply);
+        officeLog("llm-in", `cursor text: ${result.result ?? ""}`);
+        officeLog("llm-in", `pitch ${to}: ${reply || "(no pitch_customer)"}`);
         state.lastCustomerText = "";
         state.lastCustomerTo = null;
         const billed = result.usage?.totalTokens ?? 0;
         const tokens = billed || estimateTokens(prompt, result.result ?? "");
         recordTokens(state, tokens, emit);
+        emit({
+          type: "trace",
+          agentId: to,
+          tool: "sales_turn",
+          summary: (reply || "cursor sales turn").slice(0, 80),
+          tokens,
+        });
         if (result.status === "error") {
           emit({
             type: "error",

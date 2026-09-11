@@ -54,7 +54,7 @@ Live prompts also prepend `BUSINESS_GUARDRAIL_RULES` (stay in the office, no she
 npm run eval
 ```
 
-`scripts/eval.ts` runs without servers or keys. Last run: **41/41** cases in the file.
+`scripts/eval.ts` runs without servers or keys. Last run: **87/87** cases in the file.
 
 | Bucket | What it proves |
 | --- | --- |
@@ -62,8 +62,14 @@ npm run eval
 | Commerce | 30-ream A3 sale drops 40→10, $255 revenue, reorder flag, oversell refused |
 | Matching | SKU from text, qty vs GSM |
 | Intent | Quote-gated yes/ok; lone yes is not a buy; recycled spec is not a close; hangup vs “by the way”; `$1000` goal miss/hit |
-| Cache | Price question canned reply; greeting has no price dump; normalized repeat hits cache |
+| Canned sales | Price question; greeting has no price dump; repeats re-read live qty/stock (no conversation cache) |
 | Spec change | “recycled, legal, 35” updates pitch SKU/qty and quotes recycled — does not ring up the A3 |
+| Call / memory | Hangup clears `callPhase`; slim board includes a recalled requirement; Mock cannot enable Live office |
+| Close / hangup | Sale thanks then delayed silent hangup; leftover chat yes does not re-ring; slim board shows already sold |
+| Call privacy | Fire / WHAZUUUP / coffee hold during a live sale; 10:00 standup waits until hangup |
+| Directed voice | Mock `performLine` returns the fallback; live providers perform a cue in character |
+| Idle lock | Wall-clock 3 minutes without player chat (`IDLE_LOCK_MS` / `idleLockDue`) |
+| Env settings pins | `PROVIDER` / `MODEL` / `FLOOR` parse + apply; mock cannot be forced live |
 
 `npm run typecheck` / `npm run build` (`tsc --noEmit`) is the compile gate.
 
@@ -74,14 +80,18 @@ There is no Playwright suite in-repo. Browser review during build used Cursor’
 | Loop | Mechanism | Stop / continue |
 | --- | --- | --- |
 | Goal stamp | `goalReached` after celebration beats, not on the first “ok” | Stamp faded; used to fire too early |
-| Quote-gated close | `looksLikePurchase(text, dealIsQuoted)` — lone yes is not a buy | Recycled/spec change updates pitch, does not ring the old SKU |
+| Quote-gated close | `looksLikePurchase(text, dealIsQuoted)` — lone yes is not a buy; “yes I want all / more” is a qty change | Recycled/spec change updates pitch, does not ring the old SKU |
 | Inbound call | `dial` → Pam → transfer; `hangup` / bye clears the line | `pitch_customer` refused unless `callPhase === live` |
+| Sale hangup | Successful `tryCloseSale` thanks first; silent hangup waits `linePlayMs` so chat can finish typing | A later “yes” needs a new quote; leftover thanks in chat is not a quote |
+| Floor hold | Ambient `hold` beats park while `isSalesCallActive`; standup `markFired` + flush after hangup | `call_meeting` refused on an open sales call |
 | Reorder | `qty <= reorderAt` → Angela→Pam → 36-tick mill delay | STOCK stays down until the truck |
-| Token budget | `TokenMeterHandler` + Cursor `usage.totalTokens` + char/4 fallback | Tick skips LLM; one `error` event |
+| Token budget | `TokenMeterHandler` + Cursor `usage.totalTokens` + char/4 fallback | Tick skips LLM; Live office falls back to Scripted; Michael announces |
+| Live office supervisor | Event only: standup, 3-turn stall, reorder, $100 sale | Never per clock tick; `trace` + WHO’S UP |
+| Idle lock | 3 min wall-clock with no player chat (`office_locked`) | Stamp + title; harness `stop()` so ticks/LLMs stop |
 | Provider failure | `start()` catch | Mock takeover |
 | Wanderers | `recallWanderers` | Jim/Dwight/Pam pulled home if they loiter |
-| Sales cache | `rememberSalesReply` | Repeat customer line skips the model |
-| Cursor sandbox | `disallowedTools` + temp `cwd` | Cannot edit this repo or fetch the web |
+| Sales replies | `cannedSalesReply` from live office state | No conversation cache — repeats re-evaluate qty/stock |
+| Cursor isolation | `disallowedTools` + temp `cwd`; OS sandbox off (not supported here) | Cannot edit this repo or fetch the web |
 
 ## 6. Observability
 
@@ -94,7 +104,7 @@ There is no Playwright suite in-repo. Browser review during build used Cursor’
 [office …] [tokens] +842 day 842 $0.0002
 ```
 
-BOOKS in the office menu shows balance, today’s cash, and token spend at `$0.25 / 1M`.
+BOOKS in the office menu shows balance, today’s cash, token spend at `$0.25 / 1M`, and **last live turn** tokens. WHO’S UP shows the last tool (`trace` events).
 
 ## 7. What we did not add
 
@@ -103,6 +113,19 @@ BOOKS in the office menu shows balance, today’s cash, and token spend at `$0.2
 - No held-out sales-conversation gold set beyond canned regex + cache.
 - Cursor/OpenAI/Anthropic live calls are **not** in `npm run eval` (cost and keys). Mock + guardrails + commerce cover the invariants those providers must not violate.
 
-## 8. How to extend the eval
+## 8. Manual Live office checklist
+
+Settings → Provider **OpenAI** (or Anthropic) → Floor intelligence **Live office** → **Fast**.
+
+1. Dial Jim. Pam still answers (scripted). After transfer, say something novel (not a cached price ask).
+2. Confirm a `trace` in WHO’S UP / harness log and BOOKS **last live turn** tokens move.
+3. Ask for recycled legal 35. Second call: “the recycled thing” should not re-quote A3 from scratch (memory on the slim board).
+4. Three novel turns without a close: Michael supervisor `trace` (`stall`).
+5. 10:00 standup: supervisor `assign_task` or a Michael line — not five scripted standup quotes.
+6. Hang up. A new call starts a new LangGraph thread (`call-{session}-{agent}-{gen}`).
+
+Mock stays Scripted. Live office + missing key falls back to mock as before.
+
+## 9. How to extend the eval
 
 Add a `check(...)` in `scripts/eval.ts` for any new fail-closed rule (e.g. a new off-limits pattern or SKU). Keep live-provider probes manual: Settings → provider → one novel customer line, confirm BOOKS tokens move and a second identical line does not.

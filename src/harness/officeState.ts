@@ -3,14 +3,16 @@ import {
   type DirectMessage,
   type Meeting,
   type OfficeEvent,
+  type FloorMode,
   type Provider,
   type SessionConfig,
   type SimSpeed,
+  resolveFloor,
   type Ticket,
   type WatercoolerPost,
   type ZoneId,
 } from "../shared/types.js";
-import { AGENT_IDS, looksLikeFirmOrder, looksLikePurchase } from "../shared/roster.js";
+import { AGENT_IDS, looksLikeAllStock, looksLikeFirmOrder, looksLikePurchase } from "../shared/roster.js";
 import { formatClock, startOfWeek } from "../shared/clock.js";
 import {
   formatMoney,
@@ -66,6 +68,8 @@ export interface OfficeState {
   stock: StockSku[];
   lastPitchSkuId: string;
   lastPitchQty: number;
+  /** Already told the caller the warehouse on-hand for this SKU. */
+  offeredOnHand: boolean;
   outreachLead: AgentId;
   lastCustomerTo: AgentId | null;
   lastCustomerText: string;
@@ -79,6 +83,31 @@ export interface OfficeState {
   shipments: Array<{ skuId: string; arriveTick: number }>;
   callPhase: "idle" | "ringing" | "pam" | "live";
   callTarget: AgentId;
+  /** True after a salesperson quoted on this call. Cleared on sale or hangup. */
+  openQuote: boolean;
+  /** Sale already written on this call — do not ring it up again. */
+  callClosedSale: boolean;
+  lastSale: { skuId: string; qty: number; label: string; salesperson: AgentId } | null;
+  heldBeats: FloorBeat[];
+  standupHeld: boolean;
+  floor: FloorMode;
+  lastLiveTokens: number;
+  liveTurnsWithoutClose: number;
+  supervisorDone: string[];
+  pendingSupervisor: string | null;
+}
+
+export function isLiveOffice(state: OfficeState): boolean {
+  return state.floor === "live" && state.provider !== "mock";
+}
+
+export function isSalesCallActive(state: OfficeState): boolean {
+  return state.callPhase === "ringing" || state.callPhase === "pam" || state.callPhase === "live";
+}
+
+export function markDealQuoted(state: OfficeState): void {
+  state.openQuote = true;
+  state.callClosedSale = false;
 }
 
 export function emptyState(config: SessionConfig): OfficeState {
@@ -87,6 +116,7 @@ export function emptyState(config: SessionConfig): OfficeState {
     provider: config.provider,
     model: config.model,
     speed: config.speed,
+    floor: resolveFloor(config.provider, config.floor),
     tasks: [],
     queues: emptyQueues(),
     mailboxes: {
@@ -120,6 +150,7 @@ export function emptyState(config: SessionConfig): OfficeState {
     stock: seedStock(),
     lastPitchSkuId: "copy-a3-80",
     lastPitchQty: 30,
+    offeredOnHand: false,
     outreachLead: "jim",
     lastCustomerTo: null,
     lastCustomerText: "",
@@ -133,6 +164,15 @@ export function emptyState(config: SessionConfig): OfficeState {
     shipments: [],
     callPhase: "idle",
     callTarget: "jim",
+    openQuote: false,
+    callClosedSale: false,
+    lastSale: null,
+    heldBeats: [],
+    standupHeld: false,
+    lastLiveTokens: 0,
+    liveTurnsWithoutClose: 0,
+    supervisorDone: [],
+    pendingSupervisor: null,
   };
 }
 
@@ -189,6 +229,7 @@ export function emitBooks(state: OfficeState, emit: (e: OfficeEvent) => void): v
     balance: state.balance,
     todayEarnings: state.todayEarnings,
     todayTokens: state.todayTokens,
+    lastLiveTokens: state.lastLiveTokens,
   });
 }
 
@@ -196,6 +237,7 @@ export function recordTokens(state: OfficeState, tokens: number, emit: (e: Offic
   const n = Math.max(0, Math.round(tokens));
   if (!n) return;
   state.todayTokens += n;
+  state.lastLiveTokens = n;
   officeLog(
     "tokens",
     `+${n}`,
@@ -239,6 +281,14 @@ export function applySale(
       unit: result.sku.unit,
     });
   }
+  state.callClosedSale = true;
+  state.openQuote = false;
+  state.lastSale = {
+    skuId: result.sku.id,
+    qty: result.qty,
+    label: skuLabel(result.sku),
+    salesperson,
+  };
   queueSaleCelebration(state, salesperson, result.revenue);
   if (result.hitReorder) queueReorderAsk(state, result.sku);
   emit({ type: "stock", items: state.stock.map((s) => ({ ...s })) });
@@ -249,6 +299,11 @@ export function applySale(
 export function rememberDealFromText(state: OfficeState, text: string): void {
   const matched = matchSkuFromText(state.stock, text);
   if (matched) state.lastPitchSkuId = matched.id;
+  const sku = state.stock.find((s) => s.id === state.lastPitchSkuId);
+  if (sku && looksLikeAllStock(text)) {
+    state.lastPitchQty = Math.max(1, sku.qty);
+    return;
+  }
   const withUnit = text.match(/\b(\d{1,3})\s*(reams?|packs?|units?)\b/i);
   if (withUnit) {
     const n = Number(withUnit[1]);
@@ -264,12 +319,8 @@ function isCounterSpec(state: OfficeState, text: string): boolean {
 }
 
 export function dealIsQuoted(state: OfficeState): boolean {
-  return state.customerLog.slice(-12).some((l) => {
-    if (l.from !== "jim" && l.from !== "dwight") return false;
-    return /\$\d|\bprice\b|\beach\b|\bper ream\b|\bper pack\b|\breams?\b|\bgsm\b|\ba3\b|\ba4\b|\bwrite it up\b|\bhold them\b|\bcopy paper\b/i.test(
-      l.text,
-    );
-  });
+  if (state.callClosedSale) return false;
+  return state.openQuote;
 }
 
 /** Ring up from the caller's line. Chat agreement is not a sale until this runs. */
@@ -279,6 +330,7 @@ export function tryCloseSale(
   salesperson: AgentId,
   text: string,
 ): boolean {
+  if (state.callClosedSale) return false;
   const counter = isCounterSpec(state, text);
   rememberDealFromText(state, text);
   if (counter && !looksLikeFirmOrder(text)) return false;
@@ -288,7 +340,8 @@ export function tryCloseSale(
   }
   const matched = matchSkuFromText(state.stock, text);
   const skuId = matched?.id ?? state.lastPitchSkuId;
-  const qty = qtyFromText(text, state.lastPitchQty);
+  const onHand = state.stock.find((s) => s.id === skuId)?.qty;
+  const qty = qtyFromText(text, state.lastPitchQty, onHand);
   const sold = applySale(state, skuId, qty, salesperson, emit);
   deliverSalesLine(
     state,
@@ -296,7 +349,7 @@ export function tryCloseSale(
     salesperson,
     sold.ok ? saleThanks(state) : sold.message,
   );
-  return true;
+  return sold.ok;
 }
 
 function markClosedSaleTickets(
@@ -452,20 +505,25 @@ export function formatBlackboard(state: OfficeState): string {
 }
 
 /** Compact board for live LLM ticks — skip quiet queues, DMs, and full warehouse. */
-export function formatSlimBoard(state: OfficeState): string {
+export function formatSlimBoard(state: OfficeState, recalled?: string): string {
   const low = state.stock
     .filter((s) => s.qty <= s.reorderAt)
     .map((s) => `- ${s.id} ${skuLabel(s)}: ${s.qty} ${s.unit} ${formatMoney(s.price)} LOW`)
     .join("\n");
   const sku = state.stock.find((s) => s.id === state.lastPitchSkuId);
   const chat = state.customerLog
-    .slice(-4)
+    .slice(-12)
     .map((l) => `- ${l.from} → ${l.to}: ${l.text}`)
     .join("\n");
+  const onHand = sku?.qty ?? "?";
   return [
     `Time ${formatClock(state.clock)}  books ${formatMoney(state.balance)}`,
-    `If they ask for paper: ${state.lastPitchQty} of ${sku ? skuLabel(sku) : state.lastPitchSkuId} at ${sku ? formatMoney(sku.price) : "?"}. Do not recite this unless they asked.`,
+    state.lastSale
+      ? `Already sold today: ${state.lastSale.qty} of ${state.lastSale.label} (${state.lastSale.salesperson}). Do not ring that up again unless they ask for a new distinct order and you quote it.`
+      : "",
+    `Open deal: ${state.lastPitchQty} of ${sku ? skuLabel(sku) : state.lastPitchSkuId} (${state.lastPitchSkuId}) at ${sku ? formatMoney(sku.price) : "?"} — ${onHand} on the floor. Stay on this article unless they name a different paper.`,
     low ? `Low stock:\n${low}` : "Warehouse: no LOW lines.",
+    recalled && recalled !== "(nothing recalled)" ? `Memory:\n${recalled}` : "",
     `Chat:\n${chat || "(empty)"}`,
     state.lastCustomerText
       ? `Customer just wrote to ${state.lastCustomerTo}: "${state.lastCustomerText}"`

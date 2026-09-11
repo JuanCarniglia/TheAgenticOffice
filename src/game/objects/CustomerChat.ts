@@ -19,6 +19,7 @@ export class CustomerChat {
   minimized = true;
   counterpart: AgentId = "jim";
   private inCall = false;
+  private ending = false;
 
   constructor(
     private readonly onSend: (to: AgentId, text: string) => void,
@@ -127,7 +128,12 @@ export class CustomerChat {
   }
 
   markOnLine(): void {
+    if (this.ending) {
+      this.paintHangup();
+      return;
+    }
     this.inCall = true;
+    if (this.inputEl) this.inputEl.disabled = false;
     this.paintHangup();
   }
 
@@ -140,15 +146,30 @@ export class CustomerChat {
     this.inCall = false;
     this.locked = false;
     this.waiting(false);
-    this.playGen += 1;
-    const leftover = this.outgoing.splice(0);
-    this.typing = false;
-    const title = this.host?.querySelector("#chat-title");
-    if (title) title.textContent = "CALL ENDED";
-    if (this.inputEl) this.inputEl.placeholder = "Call ended. Dial Jim or Dwight…";
-    for (const line of leftover) this.writeRow(line.from, line.text);
-    this.writeRow("—", "line disconnected");
+    this.ending = true;
+    if (this.inputEl) {
+      this.inputEl.disabled = true;
+      this.inputEl.placeholder = "Call ending…";
+    }
     this.paintHangup();
+    void this.finishEndedCall();
+  }
+
+  private async finishEndedCall(): Promise<void> {
+    const gen = this.playGen;
+    while (this.typing || this.outgoing.length) {
+      if (!this.host || !this.ending || gen !== this.playGen) return;
+      await sleep(40);
+    }
+    if (!this.host || !this.ending || gen !== this.playGen) return;
+    this.writeRow("—", "line disconnected");
+    const title = this.host.querySelector("#chat-title");
+    if (title) title.textContent = "CALL ENDED";
+    if (this.inputEl) {
+      this.inputEl.disabled = false;
+      this.inputEl.placeholder = "Call ended. Dial Jim or Dwight…";
+    }
+    this.ending = false;
   }
 
   /** Incoming pitch may set the default target unless the player picked Jim/Dwight. */
@@ -195,6 +216,7 @@ export class CustomerChat {
 
   unmount(): void {
     this.playGen += 1;
+    this.ending = false;
     this.outgoing = [];
     this.typing = false;
     this.host?.remove();
@@ -297,6 +319,7 @@ export class CustomerChat {
   }
 
   private flush(): void {
+    if (this.ending) return;
     const text = this.inputEl?.value.trim() ?? "";
     if (!text) return;
     if (this.inputEl) this.inputEl.value = "";

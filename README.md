@@ -40,6 +40,9 @@ Copy `.env.example` to `.env` in the **repo root**. Keys stay on the harness —
 | `CURSOR_API_KEY` | Settings → Cursor | Cursor SDK agent (`composer-2.5` by default). Create a key in Cursor Dashboard → Integrations |
 | `PORT` | optional | Harness HTTP/WebSocket port. Default `8787` |
 | `HOST` | optional | Bind address. Default `127.0.0.1`. ECS/Docker sets `0.0.0.0` |
+| `PROVIDER` | optional | Lock Settings → Provider (`mock`, `openai`, `anthropic`, `cursor`). Field is disabled. |
+| `MODEL` | optional | Lock Settings → Model (any model id). Field is disabled. |
+| `FLOOR` | optional | Lock Settings → Floor intelligence (`scripted` or `live`). Field is disabled. Mock still runs Scripted. |
 
 Do not commit `.env`. `.gitignore` already excludes it.
 
@@ -56,7 +59,7 @@ That starts **two processes in parallel** (`concurrently`):
 | `game` (Vite) | http://127.0.0.1:5178/ | Phaser UI, intro, settings, office |
 | `harness` (tsx) | http://127.0.0.1:8787 | Clock, agents, tools, WebSocket `/ws` |
 
-Open the game URL. Click through the intro, pick a company goal, provider, and sound, then **Open Office**. Dial Jim or Dwight — the phone rings at Pam’s desk first.
+Open the game URL. Click through the intro, pick a company goal, provider, floor intelligence (Scripted vs Live office), and sound, then **Open Office**. Dial Jim or Dwight — the phone rings at Pam’s desk first. Mock is always Scripted. Live office (OpenAI / Anthropic / Cursor) spends tokens only on sales, standup, stall, and reorder. Three minutes without chat locks the office and returns to the title so an empty session does not keep spending.
 
 Individual processes:
 
@@ -95,7 +98,7 @@ None are required to play.
 | None (Mock) | Default | Scripted ticks, inbound-call beats, canned sales lines, floor bits |
 | OpenAI | Settings → OpenAI | Default model `gpt-4o-mini`. Network call per **novel** customer reply |
 | Anthropic | Settings → Anthropic | Default model `claude-sonnet-4-0` |
-| Cursor | Settings → Cursor | Local Cursor agent in a sandboxed temp directory; office tools only (no shell/files/web) |
+| Cursor | Settings → Cursor | Local Cursor agent in a temp directory; office tools only (no shell/files/web). OS sandbox is off — this environment does not support it. |
 
 Fonts load from Google Fonts (`Press Start 2P`, `VT323`). The game still boots if that request fails.
 
@@ -107,6 +110,7 @@ Fonts load from Google Fonts (`Press Start 2P`, `VT323`). The game still boots i
 4. Chat first; a quote comes when you ask. **Yes / ok / sounds good** only rings up **after** a quote. A spec change (“recycled, legal, 35”) updates the ticket instead of closing the old one.
 5. **HANG UP** or type bye. Low stock sends Angela to Pam; a mill truck restocks later at 20% of list.
 6. The floor keeps running: standup, fires Dwight puts out, faxes, coffee, Michael yelling WHAZUUUP.
+7. Sit idle for **three minutes** (no chat, dial, hangup, or HQ reply) and the office stamps **OFFICE LOCKED DOWN**, then the title. The harness clock stops.
 
 Settings **Sound** (Web Audio) plays ring / pickup / transfer / hangup, the $100 bell, and UI beeps. Typewriter timing is on chat lines and floor balloons.
 

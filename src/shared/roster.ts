@@ -123,6 +123,38 @@ export function looksLikeSmallTalk(text: string): boolean {
     );
 }
 
+/** “How many do you have?” — inventory, not a 30-ream ticket. */
+export function looksLikeStockOnHandAsk(text: string): boolean {
+  const t = text.trim();
+  if (/\b(how much|price|cost|per ream|per pack)\b/i.test(t)) return false;
+  if (/\bhow many\b/i.test(t) && /\b(have|got|left|stock|warehouse|cage|on hand|available)\b/i.test(t)) {
+    return true;
+  }
+  return /\b(what('s| is) (left|in stock|on (the )?(floor|shelf))|in the (warehouse|cage)|on hand)\b/i.test(t);
+}
+
+/** Caller is changing qty (all / more / a new count), not confirming the last quote. */
+export function looksLikeAllStock(text: string): boolean {
+  const t = text.trim();
+  if (
+    /\b(all of (it|them|that)|all of (the )?(stock|warehouse|cage)|the whole (lot|cage|warehouse|stock)|everything you('ve| have)|everything in (stock|the warehouse|the cage)|want all|take all|buy all|all you have|as many as you (have|got)|the rest|(want|take|buy|do) (the )?(full |whole )?lot|full lot)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return /^(yes|yeah|yep|yup|ok|okay|sure)[,.]?\s+(i want )?(all|the lot)[\s!.]*$/i.test(t)
+    || /^(i want )?(all|the (full |whole )?lot)( of (it|them|that))?\s*[!.]*$/i.test(t);
+}
+
+export function looksLikeQtyChange(text: string): boolean {
+  if (looksLikeAllStock(text)) return true;
+  const t = text.trim();
+  if (/\b(no more|not more|nothing more|any more)\b/i.test(t)) return false;
+  if (/\b(more|less|another|extra|instead|make it|bump (it|that)|raise (it|that))\b/i.test(t)) return true;
+  return /\b\d{1,3}\s*(reams?|packs?|units?)\b/i.test(t) && !looksLikeFirmOrder(t);
+}
+
 export function looksLikeFirmOrder(text: string): boolean {
   if (looksLikeRejection(text)) return false;
   const t = text.trim();
@@ -142,6 +174,7 @@ export function looksLikeFirmOrder(text: string): boolean {
 export function looksLikePurchase(text: string, quoted = false): boolean {
   if (looksLikeFirmOrder(text)) return true;
   if (looksLikeRejection(text)) return false;
+  if (looksLikeQtyChange(text)) return false;
   const t = text.trim();
   if (!quoted) return false;
   if (/\b(i('m| am) good|how are you|how about you|and you)\b/i.test(t)) return false;
