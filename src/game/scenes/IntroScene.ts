@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { bootBeep } from "../audio.js";
+import { bootBeep, playMenuTheme } from "../audio.js";
 import { fetchLockedOptions, loadSettings } from "../settingsStore.js";
 import { COLORS, FONT_BODY, FONT_PIXEL } from "../style.js";
 
@@ -87,9 +87,14 @@ export class IntroScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       bootBeep(loadSettings().sound);
+      playMenuTheme(loadSettings().sound);
     });
 
-    this.input.once("pointerdown", () => this.scene.start("Settings"));
-    this.input.keyboard?.once("keydown", () => this.scene.start("Settings"));
+    const goSettings = () => {
+      playMenuTheme(loadSettings().sound);
+      this.scene.start("Settings");
+    };
+    this.input.once("pointerdown", goSettings);
+    this.input.keyboard?.once("keydown", goSettings);
   }
 }

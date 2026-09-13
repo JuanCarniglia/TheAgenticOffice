@@ -3,7 +3,7 @@ import type { AgentId, OfficeEvent, Ticket, WatercoolerPost, ZoneId } from "../.
 import { AGENT_IDS, isSales, workerById } from "../../shared/roster.js";
 import { zoneWorldPos, worldToNorm, ZONES } from "../layout.js";
 import { loadSettings, peekLockedOptions, settingsWithLocks } from "../settingsStore.js";
-import { beep, phoneHangup, phonePickup, phoneTransfer, ringBell, ringPhone } from "../audio.js";
+import { beep, phoneHangup, phonePickup, phoneTransfer, ringBell, ringPhone, stopMenuTheme } from "../audio.js";
 import { OfficeClient } from "../net/OfficeClient.js";
 import { Hud } from "../objects/Hud.js";
 import { WorkerSprite } from "../objects/WorkerSprite.js";
@@ -39,6 +39,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create(): void {
+    stopMenuTheme();
     const settings = settingsWithLocks(loadSettings(), peekLockedOptions() ?? {});
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(0x2a2a2e);

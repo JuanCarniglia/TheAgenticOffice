@@ -20,6 +20,7 @@ const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
   ".js": "application/javascript; charset=utf-8",
+  ".mp3": "audio/mpeg",
   ".json": "application/json",
   ".map": "application/json",
   ".png": "image/png",

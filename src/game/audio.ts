@@ -1,4 +1,36 @@
 let ctx: AudioContext | null = null;
+let theme: HTMLAudioElement | null = null;
+
+function themeEl(): HTMLAudioElement {
+  if (!theme) {
+    theme = new Audio("/assets/theme.mp3");
+    theme.loop = true;
+    theme.volume = 0.32;
+    theme.preload = "auto";
+  }
+  return theme;
+}
+
+/** Start downloading the title theme during boot. */
+export function preloadMenuTheme(): void {
+  themeEl();
+}
+
+/** Loop the title theme on Intro / Settings. Needs a user click the first time. */
+export function playMenuTheme(enabled: boolean): void {
+  const el = themeEl();
+  if (!enabled) {
+    el.pause();
+    return;
+  }
+  void el.play().catch(() => undefined);
+}
+
+export function stopMenuTheme(): void {
+  if (!theme) return;
+  theme.pause();
+  theme.currentTime = 0;
+}
 
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;

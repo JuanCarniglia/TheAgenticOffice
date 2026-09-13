@@ -4,7 +4,69 @@ A vintage PC game of a paper company run by AI agents. Five workers live on an i
 
 Two processes, one TypeScript repo: a Phaser 3 game in the browser, and a local harness that ticks the office, runs tools, and (optionally) calls an LLM. After `npm run build`, the harness can serve the game itself (Docker / ECS).
 
+## About
+
+The goal of the game is to demonstrate an AGENTIC Office (An office run by AI Agents, instead of real people), doing a real life purpose, like selling paper.
+
+In the game, you start by selecting the “end goal”. It can be to make a sale, to sell $ 1000, to empty stock, etc. 
+
+You (human) play the customer, you can buy paper, chat with Jim or Dwight, or you can just watch the fun action on the office floor.
+
+## Pam
+
+Pam has the role of the Secretary. She gets to answer the phone when a customer (you) calls in, and forwards the call to either Jim or Dwight (Depending who you wanted to talk to).
+
+Also, she seldoms receives a Fax from Corporate, and sends it over to Michael, who in turns asks her to file it on the “special cabinet” (trash).
+
+She also hits the bell, every time a sale of over $ 100 is made.
+
+She contacts the repositioning team (depot), to get re-stocked.
+
+## Michael
+
+Michael is the Manager. He has no real job there, only to congratulate Jim or Dwight when they make a sale, ask every now and then if there are any more sales and call for an all-hands, gathering all other agents.
+
+He also does the Wazuuuuup bit, trying to get Jim and Dwight to tag along.
+
+## Angela
+
+Angela has a side-role, but important. She is responsible for keeping the stock at level. So whenever a certain item hits reposition level, she goes to Pam and asks her to re-stock that item. She keeps the stock books, sort of.
+
+She sometimes thinks about her cats.
+
+## Jim
+
+Jim is the leading salesman (or is he?) and he tries to sell you stuff. If you let him, he will try to sell the top product on the stock list. You need to tell him specifically what product you want, and how many reams (paper). He cannot sell you more than what is on stock, so don’t insist.
+He is polite, chatty and fun to talk to, but he is clearly bored of his job.
+
+Also, he and Pam sometimes scuttle over to the cafeteria for (...) some time alone to chat.
+
+
+## Dwight
+
+He is also a sales man (and assistant regional manager, or assistant to the regional manager, whatever). He tries to get sales over Jim, and he is correct but cold in his demeanor. He will also need specific instructions to make a sale.
+
+Every now and then, a small fire will break out in the office and you will see him running over to control it (he is also a volunteer sheriff deputy, so it makes sense).
+
+
+
+Neither Jim or Dwight can talk about anything else than selling paper, they are quite constrained by corporate.
+
+To play the game, you need to start by calling either Jim or Dwight using the chat window. Remember to end the call, in order to actually make the buy.
+
+## Spending
+
+There is also a “Company Books” window, where you can see how much money was gained on the current game, and also how much you spent on tokens (That is real money, by the way!)
+
+At any time you can see what each Agent is doing, by clicking on them. You will get a notion of the last action performed and what they are currently waiting on.
+
+Since the office actions actually spend tokens, the office “Locks Down” after a few minutes of inactivity.
+
+
+
 ## Docs
+
+Full DOCS : https://docs.google.com/document/d/15fNYfR1WMIpYJ0xbnZOVevpybDLFTfL_g-N6daD8bhQ/edit?usp=sharing
 
 | Document | What it covers |
 | --- | --- |
@@ -112,7 +174,7 @@ Fonts load from Google Fonts (`Press Start 2P`, `VT323`). The game still boots i
 6. The floor keeps running: standup, fires Dwight puts out, faxes, coffee, Michael yelling WHAZUUUP.
 7. Sit idle for **three minutes** (no chat, dial, hangup, or HQ reply) and the office stamps **OFFICE LOCKED DOWN**, then the title. The harness clock stops.
 
-Settings **Sound** (Web Audio) plays ring / pickup / transfer / hangup, the $100 bell, and UI beeps. Typewriter timing is on chat lines and floor balloons.
+Settings **Sound** (Web Audio) plays ring / pickup / transfer / hangup, the $100 bell, and UI beeps. The title theme (`public/assets/theme.mp3`) loops on Intro and Settings and stops when the office opens. Typewriter timing is on chat lines and floor balloons.
 
 ## Ports
 

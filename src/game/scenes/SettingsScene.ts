@@ -19,7 +19,7 @@ import {
   type GameSettings,
 } from "../settingsStore.js";
 import { HUMAN_MAX_CHARS, screenHumanText } from "../../shared/guardrails.js";
-import { beep } from "../audio.js";
+import { beep, playMenuTheme, stopMenuTheme } from "../audio.js";
 import { COLORS, FONT_BODY, FONT_PIXEL } from "../style.js";
 
 const PROVIDERS: Provider[] = ["mock", "openai", "anthropic", "cursor"];
@@ -57,6 +57,7 @@ export class SettingsScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    playMenuTheme(this.settings.sound);
     void this.bootForm();
 
     const start = this.add
@@ -193,6 +194,9 @@ export class SettingsScene extends Phaser.Scene {
     pick.addEventListener("change", () => {
       this.syncGoalField(pick, goal, box.querySelector<HTMLDivElement>("#s-goal-preview"));
     });
+    sound.addEventListener("change", () => {
+      playMenuTheme(sound.value === "on");
+    });
     box.querySelector("#s-open")?.addEventListener("click", () => this.commit(true));
     box.querySelector("#s-back")?.addEventListener("click", () => {
       this.commit(false);
@@ -283,6 +287,8 @@ export class SettingsScene extends Phaser.Scene {
     if (hint) hint.textContent = "";
     this.settings.goal = goalCheck.text;
     saveSettings(this.settings);
+    if (openOffice) stopMenuTheme();
+    else playMenuTheme(this.settings.sound);
     beep(this.settings.sound, 660, 60);
     if (openOffice) this.scene.start("Office");
   }

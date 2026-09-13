@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { preloadMenuTheme } from "../audio.js";
 import { COLORS, FONT_PIXEL } from "../style.js";
 import { registerWorkerTextures } from "../sprites/pixelPeople.js";
 import { registerFireTexture } from "../sprites/officeFire.js";
@@ -38,6 +39,7 @@ export class BootScene extends Phaser.Scene {
     } catch {
       /* fonts optional */
     }
+    preloadMenuTheme();
     this.time.delayedCall(280, () => this.scene.start("Intro"));
   }
 }
